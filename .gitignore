@@ -1,0 +1,5 @@
+data/
+code/results/
+code/__pycache__/
+slurm_outputs/
+*/__pycache__/*
