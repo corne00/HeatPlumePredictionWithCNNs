@@ -13,7 +13,7 @@ def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_
     
     with torch.no_grad():
         with (torch.autocast(device_type='cuda', dtype=data_type) if half_precision else contextlib.nullcontext()):
-            for images, masks in tqdm(dataloader):
+            for images, masks in tqdm(dataloader, disable=True):
                 images = [im.half() for im in images]
                 masks = masks.to(device, dtype=torch.half)
 
@@ -46,7 +46,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
     # Initialize the network architecture
     unet = model(n_channels=3, n_classes=1, input_shape=(640, 640), num_comm_fmaps=num_comm_fmaps, devices=devices, depth=depth,
                                    subdom_dist=subdomains_dist, bilinear=False, comm=comm, complexity=complexity, dropout_rate=dropout_rate, 
-                                   kernel_size=kernel_size, padding=padding, communicator_type=None, comm_network_but_no_communication=(not exchange_fmaps), 
+                                   kernel_size=kernel_size, padding=padding, communicator_type=None, comm_network_but_no_communication=(not exchange_fmaps), num_convs=num_convs,
                                    communication_network_def=communication_network)
     
     unet.save_weights(save_path=os.path.join(save_path, "unet.pth"))
@@ -70,7 +70,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         unet.train()
         epoch_losses = []  # Initialize losses for the epoch
         
-        for images, masks in tqdm(dataloader_train):
+        for images, masks in tqdm(dataloader_train, disable=True):
             optimizer.zero_grad()
             
             with (torch.autocast(device_type='cuda', dtype=data_type) if half_precision else contextlib.nullcontext()):
@@ -118,7 +118,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
                 unet.decoders[i].load_state_dict(unet.decoders[0].state_dict())
     
         # Compute and print validation loss
-        val_loss = compute_validation_loss(unet, loss, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision)
+        val_loss = compute_validation_loss(unet, torch.nn.MSELoss(), dataloader_val, devices[0], data_type=data_type, half_precision=half_precision)
         print(f'Validation Loss (Dice): {val_loss:.4f}, Train Loss: {losses[-1]:.4f}')
         
         validation_losses.append(val_loss)
