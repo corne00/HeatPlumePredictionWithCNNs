@@ -6,15 +6,14 @@ import time
 from tqdm import tqdm
 from .visualization import plot_results
 
-def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_precision):
+def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_precision, verbose=False):
     model.eval()
     total_loss = 0.0
     num_batches = 0
     
     with torch.no_grad():
         with (torch.autocast(device_type='cuda', dtype=data_type) if half_precision else contextlib.nullcontext()):
-            for images, masks in tqdm(dataloader, disable=True):
-            for images, masks in tqdm(dataloader, disable=True):
+            for images, masks in tqdm(dataloader, disable=(not verbose)):
                 images = [im.half() for im in images]
                 masks = masks.to(device, dtype=torch.half)
 
@@ -38,8 +37,9 @@ class CombiLoss(torch.nn.Module):
 # Train function
 def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset, val_dataset, scaler, data_type, half_precision, comm, num_epochs, 
                          num_comm_fmaps, save_path, subdomains_dist, exchange_fmaps, devices, num_convs,
-                         padding, depth, kernel_size, complexity, communication_network=None, dropout_rate=0.0, weight_decay_adam:float=1e-5, loss_fn_alpha:float=1., lr:float=1e-4,
-                         loss_func=None, val_loss_func=None):
+                         padding, depth, kernel_size, complexity, communication_network=None, dropout_rate=0.0, weight_decay_adam:float=1e-5, 
+                         loss_fn_alpha:float=1., lr:float=1e-4,
+                         loss_func=None, val_loss_func=None, verbose=False):
     
     # Check to make sure  
     if num_comm_fmaps == 0:
@@ -76,7 +76,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         unet.train()
         epoch_losses = []  # Initialize losses for the epoch
         
-        for images, masks in tqdm(dataloader_train, disable=True):
+        for images, masks in tqdm(dataloader_train, disable=(not verbose)):
             optimizer.zero_grad()
             
             with (torch.autocast(device_type='cuda', dtype=data_type) if half_precision else contextlib.nullcontext()):
@@ -129,7 +129,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         else:
             val_loss_func = val_loss_func
 
-        val_loss = compute_validation_loss(unet, val_loss_func, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision)
+        val_loss = compute_validation_loss(unet, val_loss_func, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
         print(f'Validation Loss (Dice): {val_loss:.4f}, Train Loss: {losses[-1]:.4f}')
         
         validation_losses.append(val_loss)

@@ -10,7 +10,7 @@ from torch.cuda.amp import GradScaler
 
 from models import *
 from utils import parse_args, save_args_to_json, plot_results
-from utils.losses import WeightedMSELoss
+from utils.losses import WeightedMSELoss, ThresholdedMSELoss
 from dataprocessing import DatasetMultipleSubdomains
 from utils.train_utils import *
 from utils.visualization import *
@@ -70,7 +70,7 @@ unet, val_losses, training_losses = train_parallel_model(model=MultiGPU_UNet_wit
                                                          save_path=args.save_path, subdomains_dist=args.subdomains_dist, exchange_fmaps=args.exchange_fmaps,
                                                          padding=args.padding, depth=args.depth, kernel_size=args.kernel_size, communication_network=None,
                                                          complexity=args.complexity, dropout_rate=0.0, devices=devices, num_convs=args.num_convs,
-                                                         weight_decay_adam=0, loss_fn_alpha=1, lr=0.0001, loss_func=torch.nn.MSELoss(), val_loss_func=WeightedMSELoss())
+                                                         weight_decay_adam=0, loss_fn_alpha=1, lr=0.0001, loss_func=ThresholdedMSELoss(), val_loss_func=ThresholdedMSELoss(), verbose=True)
 
 plot_results(unet=unet, savepath=args.save_path, epoch_number="best", train_dataset=train_dataset, val_dataset=val_dataset)
 
