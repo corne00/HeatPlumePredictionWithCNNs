@@ -17,5 +17,6 @@ module load py-matplotlib py-geopandas cuda py-scikit-learn
 
 # Execute the command
 cd /scratch/e451412/code
-srun python ./train.py --num_epochs 1000 --complexity 16
 
+# srun python train.py --complexity 16 --depth 4 --kernel_size 7 --num-convs 3 --num_epochs 500 --save_path "./results/unet_depth_4_complexity_16"
+srun python train.py --complexity 16 --depth 4 --kernel_size 5 --num-convs 2 --num_epochs 200 --save_path "./results/unet_data_loss_1"

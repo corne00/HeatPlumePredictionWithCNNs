@@ -25,13 +25,16 @@ from utils.train_utils import *
 from utils.visualization import *
 
 def init_data(args, image_dir, mask_dir):
-        train_dataset = DatasetMultipleSubdomains(image_labels=[f"RUN_{i}.pt" for i in range(800)], image_dir=image_dir, mask_dir=mask_dir, transform=None,
+        image_labels = os.listdir(image_dir)
+        split=[800,190,10]
+        
+        train_dataset = DatasetMultipleSubdomains(image_labels=image_labels[:split[0]], image_dir=image_dir, mask_dir=mask_dir, transform=None,
                                             target_transform=None, data_augmentation=None, subdomains_dist=args.subdomains_dist, patch_size=640)
 
-        val_dataset = DatasetMultipleSubdomains(image_labels=[f"RUN_{i}.pt" for i in range(800,990)], image_dir=image_dir, mask_dir=mask_dir, transform=None,
+        val_dataset = DatasetMultipleSubdomains(image_labels=image_labels[split[0]:split[0]+split[1]], image_dir=image_dir, mask_dir=mask_dir, transform=None,
                                             target_transform=None, data_augmentation=None, subdomains_dist=args.subdomains_dist, patch_size=640)
 
-        test_dataset = DatasetMultipleSubdomains(image_labels=[f"RUN_{i}.pt" for i in range(990,1000)], image_dir=image_dir, mask_dir=mask_dir, transform=None,
+        test_dataset = DatasetMultipleSubdomains(image_labels=image_labels[split[0]+split[1]:], image_dir=image_dir, mask_dir=mask_dir, transform=None,
                                             target_transform=None, data_augmentation=None, subdomains_dist=args.subdomains_dist, patch_size=640)
 
         # Define dataloaders
@@ -65,7 +68,6 @@ def objective(trial):
         print("Results directory already exists!")
         exit()
 
-    save_args_to_json(args=args, filename=os.path.join(args.save_path, "args.json"))
 
     # Check if we have half precision
     half_precision = torch.cuda.is_available()
@@ -97,6 +99,8 @@ def objective(trial):
         weight_decay_adam = trial.suggest_categorical("weight_decay", [0, 1e-5])
         loss_fn_alpha = trial.suggest_categorical("loss_alpha", [0, 0.25, 0.5, 0.75, 1.])
 
+        save_args_to_json(args=args, filename=os.path.join(args.save_path, "args.json"))
+        
         unet, val_losses, training_losses = train_parallel_model(model=MultiGPU_UNet_with_comm, dataloader_val=dataloaders["val"], dataloader_train=dataloaders["train"], scaler=scaler, data_type=data_type, half_precision=True, train_dataset=datasets["train"], val_dataset=datasets["val"], comm=args.comm, num_epochs=args.num_epochs, num_comm_fmaps=args.num_comm_fmaps,  save_path=args.save_path, subdomains_dist=args.subdomains_dist, exchange_fmaps=args.exchange_fmaps, padding=args.padding, depth=args.depth, kernel_size=args.kernel_size, communication_network=None, complexity=args.complexity, dropout_rate=0.0, devices=devices, num_convs=args.num_convs, weight_decay_adam=weight_decay_adam, loss_fn_alpha=loss_fn_alpha, lr=lr)
         
         loss = np.min(val_losses)
@@ -115,8 +119,8 @@ def objective(trial):
 
 if __name__ == "__main__":
     print("Running")
-    study = optuna.create_study(direction="minimize", storage="sqlite:////scratch/e451412/code/results/hyperparam_tuning.db", study_name="unet", load_if_exists=True)
-    study.optimize(objective, n_trials=50)
+    study = optuna.create_study(direction="minimize", storage="sqlite:////scratch/e451412/code/results/hyperparam_tuning_new.db", study_name="unet", load_if_exists=True)
+    study.optimize(objective, n_trials=100)
 
     pruned_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.PRUNED])
     complete_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.COMPLETE])
