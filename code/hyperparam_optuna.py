@@ -1,21 +1,12 @@
 # Standard library imports
 import os
-import time
-import datetime
-import random 
 import json
-import contextlib
-
+import pathlib
 import numpy as np
-import matplotlib.pyplot as plt
-from tqdm import tqdm
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from torch.cuda.amp import GradScaler
-
 import optuna
 
 from models import *
@@ -25,13 +16,15 @@ from utils.train_utils import *
 from utils.visualization import *
 
 def init_data(args, image_dir, mask_dir):
-        train_dataset = DatasetMultipleSubdomains(image_labels=[f"RUN_{i}.pt" for i in range(800)], image_dir=image_dir, mask_dir=mask_dir, transform=None,
+        image_labels = os.listdir(image_dir)
+        split=(np.array([0.8,0.19,0.1]) * len(image_labels)).astype(int)
+        train_dataset = DatasetMultipleSubdomains(image_labels=image_labels[:split[0]], image_dir=image_dir, mask_dir=mask_dir, transform=None,
                                             target_transform=None, data_augmentation=None, subdomains_dist=args.subdomains_dist, patch_size=640)
 
-        val_dataset = DatasetMultipleSubdomains(image_labels=[f"RUN_{i}.pt" for i in range(800,990)], image_dir=image_dir, mask_dir=mask_dir, transform=None,
+        val_dataset = DatasetMultipleSubdomains(image_labels=image_labels[split[0]:split[0]+split[1]], image_dir=image_dir, mask_dir=mask_dir, transform=None,
                                             target_transform=None, data_augmentation=None, subdomains_dist=args.subdomains_dist, patch_size=640)
 
-        test_dataset = DatasetMultipleSubdomains(image_labels=[f"RUN_{i}.pt" for i in range(990,1000)], image_dir=image_dir, mask_dir=mask_dir, transform=None,
+        test_dataset = DatasetMultipleSubdomains(image_labels=image_labels[split[0]+split[1]:], image_dir=image_dir, mask_dir=mask_dir, transform=None,
                                             target_transform=None, data_augmentation=None, subdomains_dist=args.subdomains_dist, patch_size=640)
 
         # Define dataloaders
