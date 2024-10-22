@@ -1,21 +1,12 @@
 # Standard library imports
 import os
-import time
-import datetime
-import random 
 import json
-import contextlib
-
+import pathlib
 import numpy as np
-import matplotlib.pyplot as plt
-from tqdm import tqdm
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from torch.cuda.amp import GradScaler
-
 import optuna
 
 from models import *
@@ -26,8 +17,7 @@ from utils.visualization import *
 
 def init_data(args, image_dir, mask_dir):
         image_labels = os.listdir(image_dir)
-        split=[800,190,10]
-        
+        split=(np.array([0.8,0.19,0.1]) * len(image_labels)).astype(int)
         train_dataset = DatasetMultipleSubdomains(image_labels=image_labels[:split[0]], image_dir=image_dir, mask_dir=mask_dir, transform=None,
                                             target_transform=None, data_augmentation=None, subdomains_dist=args.subdomains_dist, patch_size=640)
 
@@ -62,6 +52,7 @@ def evaluate(args, unet, losses, dataloaders, datasets):
 def objective(trial):
     # Load and save the arguments from the arge parser
     args = parse_args()
+    args.save_path = f"{STUDY_DIR}/{trial.number}"
     try:
         os.makedirs(args.save_path)
     except:
@@ -85,22 +76,22 @@ def objective(trial):
     mask_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_1000dp inputs_pki outputs_t/Labels"
     
     try:
-        # args.batch_size_training = trial.suggest_categorical("batch_size", [1, 2, 4, 8, 16, 32])
+        args.batch_size_training = trial.suggest_categorical("batch_size", [1, 2, 4, 8, 16, 32])
         dataloaders, datasets = init_data(args, image_dir, mask_dir)
 
         # Generate the model
-        args.depth = trial.suggest_categorical("depth", [2, 3, 4, 5])
-        args.complexity = trial.suggest_categorical("complexity", [2, 4, 8, 16, 32, 64])
+        args.depth = trial.suggest_categorical("depth", [2, 3, 4, 5, 6])
+        args.complexity = trial.suggest_categorical("complexity", [8, 16, 32])
         args.kernel_size = trial.suggest_categorical("kernel_size", [3, 5, 7])
-        args.num_convs = trial.suggest_categorical("num_convs", [1, 2, 3, 4])
+        args.num_convs = trial.suggest_categorical("num_convs", [2, 3, 4])
 
         # Generate the optimizers
-        lr = trial.suggest_categorical("lr", [1e-3, 1e-4, 1e-5])
-        weight_decay_adam = trial.suggest_categorical("weight_decay", [0, 1e-5])
-        loss_fn_alpha = trial.suggest_categorical("loss_alpha", [0, 0.25, 0.5, 0.75, 1.])
+        lr = trial.suggest_categorical("lr", [1e-3, 2e-4, 1e-4, 5e-5, 1e-5])
+        weight_decay_adam = 0 #trial.suggest_categorical("weight_decay", [0])
+        loss_fn_alpha = trial.suggest_categorical("loss_alpha", [1., 0.])
 
         save_args_to_json(args=args, filename=os.path.join(args.save_path, "args.json"))
-        
+
         unet, val_losses, training_losses = train_parallel_model(model=MultiGPU_UNet_with_comm, dataloader_val=dataloaders["val"], dataloader_train=dataloaders["train"], scaler=scaler, data_type=data_type, half_precision=True, train_dataset=datasets["train"], val_dataset=datasets["val"], comm=args.comm, num_epochs=args.num_epochs, num_comm_fmaps=args.num_comm_fmaps,  save_path=args.save_path, subdomains_dist=args.subdomains_dist, exchange_fmaps=args.exchange_fmaps, padding=args.padding, depth=args.depth, kernel_size=args.kernel_size, communication_network=None, complexity=args.complexity, dropout_rate=0.0, devices=devices, num_convs=args.num_convs, weight_decay_adam=weight_decay_adam, loss_fn_alpha=loss_fn_alpha, lr=lr)
         
         loss = np.min(val_losses)
@@ -119,8 +110,12 @@ def objective(trial):
 
 if __name__ == "__main__":
     print("Running")
-    study = optuna.create_study(direction="minimize", storage="sqlite:////scratch/e451412/code/results/hyperparam_tuning_new.db", study_name="unet", load_if_exists=True)
-    study.optimize(objective, n_trials=100)
+    STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/pki_5000"
+    study_dir = pathlib.Path(STUDY_DIR)
+    study_dir.mkdir(parents=True, exist_ok=True)
+
+    study = optuna.create_study(direction="minimize", storage=f"sqlite:///{STUDY_DIR}/hyperparam_opti.db", study_name="search", load_if_exists=True)
+    study.optimize(objective, n_trials=50)
 
     pruned_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.PRUNED])
     complete_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.COMPLETE])

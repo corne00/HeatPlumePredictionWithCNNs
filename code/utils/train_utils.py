@@ -14,6 +14,7 @@ def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_
     with torch.no_grad():
         with (torch.autocast(device_type='cuda', dtype=data_type) if half_precision else contextlib.nullcontext()):
             for images, masks in tqdm(dataloader, disable=True):
+            for images, masks in tqdm(dataloader, disable=True):
                 images = [im.half() for im in images]
                 masks = masks.to(device, dtype=torch.half)
 
