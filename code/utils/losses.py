@@ -18,7 +18,7 @@ class WeightedMSELoss(nn.Module):
         if self.only_target_based:
             weight = target + self.epsilon
         else:
-            weight = torch.max(self.ratio[0] * prediction, self.ratio[1]*target) + self.epsilon
+            weight = torch.max(prediction, target) + self.epsilon
         
         # Compute the squared error
         mse = (prediction - target) ** 2
