@@ -89,8 +89,8 @@ def objective(trial):
         # Define loss function options
         loss_functions = {
             "mse": torch.nn.MSELoss(),
-            "combi": CombiMSE_and_MAELoss(0.5),
-            "combi_RMSE_MAE": CombiLoss(0.5),
+            "combi": CombiLoss(0.5),
+            "combi_RMSE_MAE": CombiRMSE_and_MAELoss(),
             "l1": torch.nn.L1Loss(),
             "thresholded_mse": ThresholdedMSELoss(),
             "weighted_mse_epsilon_0_1": WeightedMSELoss(epsilon=0.1),

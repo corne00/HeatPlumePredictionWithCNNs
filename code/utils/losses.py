@@ -78,12 +78,12 @@ class CombiLoss(nn.Module):
         else:
             return combined_loss.mean()
 
-class CombiMSE_and_MAELoss(nn.Module):
+class CombiRMSE_and_MAELoss(nn.Module):
     """
     Loss function that combines MSE and MAE loss with a certain ratio alpha
     """
     def __init__(self):
-        super(CombiMSE_and_MAELoss, self).__init__()
+        super(CombiRMSE_and_MAELoss, self).__init__()
         self.mse = nn.MSELoss(reduction='none')  # Set to 'none' for pixel-wise computation
         self.mae = nn.L1Loss(reduction='none')   # Set to 'none' for pixel-wise computation
         self.name = rf"CombiLoss RMSE and MAE)"
