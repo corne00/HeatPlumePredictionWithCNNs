@@ -28,21 +28,12 @@ def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_
     average_loss = total_loss / num_batches
     return average_loss
 
-class CombiLoss(torch.nn.Module):
-    def __init__(self, alpha:float=1):
-        super(CombiLoss, self).__init__()
-        self.mse = torch.nn.MSELoss()
-        self.mae = torch.nn.L1Loss()
-        self.alpha = alpha
-    def forward(self, x, y):
-        return self.alpha * self.mse(x, y) + (1-self.alpha) * self.mae(x, y)
-
 # Train function
 def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset, val_dataset, scaler, data_type, half_precision, comm, num_epochs, 
                          num_comm_fmaps, save_path, subdomains_dist, exchange_fmaps, devices, num_convs,
                          padding, depth, kernel_size, complexity, communication_network=None, dropout_rate=0.0, weight_decay_adam:float=1e-5, 
-                         loss_fn_alpha:float=1., lr:float=1e-4,
-                         loss_func=None, val_loss_func=None, verbose=False, track_loss_functions=None):
+                         loss_fn_alpha:float=1., lr:float=1e-4, plot_freq:int=10,
+                         loss_func=None, val_loss_func=None, verbose=False, num_channels=3, track_loss_functions=None):
     
     # Check to make sure  
     if num_comm_fmaps == 0:
@@ -51,7 +42,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
     writer = SummaryWriter(save_path)
     
     # Initialize the network architecture
-    unet = model(n_channels=3, n_classes=1, input_shape=(640, 640), num_comm_fmaps=num_comm_fmaps, devices=devices, depth=depth,
+    unet = model(n_channels=num_channels, n_classes=1, input_shape=(640, 640), num_comm_fmaps=num_comm_fmaps, devices=devices, depth=depth,
                                    subdom_dist=subdomains_dist, bilinear=False, comm=comm, complexity=complexity, dropout_rate=dropout_rate, 
                                    kernel_size=kernel_size, padding=padding, communicator_type=None, comm_network_but_no_communication=(not exchange_fmaps), 
                                    communication_network_def=communication_network, num_convs=num_convs)
@@ -131,6 +122,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
             for i in range(1, len(unet.decoders)):
                 unet.decoders[i].load_state_dict(unet.decoders[0].state_dict())
     
+
         # Compute and print validation loss
         if val_loss_func is None:
             val_loss_func = torch.nn.MSELoss()
@@ -166,7 +158,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
             torch.cuda.synchronize()
             torch.cuda.empty_cache()
 
-        if (epoch + 1) % 10 == 0:
+        if (epoch + 1) % plot_freq == 0:
             plot_results(unet=unet, savepath=save_path, epoch_number=epoch, train_dataset=train_dataset, val_dataset=val_dataset)
 
         # if torch.cuda.is_available()
@@ -176,7 +168,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         #     torch.cuda.reset_peak_memory_stats()
     summary_losses["val_losses"] = validation_losses
     summary_losses["training_losses"] = training_losses
-    print(f"Training the model {'with' if comm else 'without'} communication network took: {time.time() - start_time:.2f} seconds.")
+    print(f"Training the model {'with' if comm else 'without'} communication network took: {time.time() - start_time:.2f} seconds.", flush=True)
     
     # Load the best weights
     unet.load_weights(load_path=os.path.join(save_path, "unet.pth"), device=devices[0])

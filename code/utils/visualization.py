@@ -69,5 +69,5 @@ def plot_losses(avg_training_losses, val_losses, save_path):
     plt.legend()
     
     # Save the plot to the save_path directory
-    plt.savefig(os.path.join(save_path, 'losses_log.png', bbox_inches='tight'))
+    plt.savefig(os.path.join(save_path, 'losses_log.png'), bbox_inches='tight')
     plt.close()

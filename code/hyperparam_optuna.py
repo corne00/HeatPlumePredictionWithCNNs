@@ -5,35 +5,16 @@ import pathlib
 import numpy as np
 
 import torch
-from torch.utils.data import DataLoader
 from torch.cuda.amp import GradScaler
 import optuna
 from utils.losses import ThresholdedMSELoss, WeightedMSELoss
 
 from models import *
 from utils import parse_args, save_args_to_json, plot_results
-from dataprocessing import DatasetMultipleSubdomains
+from dataprocessing import init_data
 from utils.train_utils import *
 from utils.visualization import *
-
-def init_data(args, image_dir, mask_dir):
-        image_labels = os.listdir(image_dir)
-        split=(np.array([0.8,0.19,0.1]) * len(image_labels)).astype(int)
-        train_dataset = DatasetMultipleSubdomains(image_labels=image_labels[:split[0]], image_dir=image_dir, mask_dir=mask_dir, transform=None,
-                                            target_transform=None, data_augmentation=None, subdomains_dist=args.subdomains_dist, patch_size=640)
-
-        val_dataset = DatasetMultipleSubdomains(image_labels=image_labels[split[0]:split[0]+split[1]], image_dir=image_dir, mask_dir=mask_dir, transform=None,
-                                            target_transform=None, data_augmentation=None, subdomains_dist=args.subdomains_dist, patch_size=640)
-
-        test_dataset = DatasetMultipleSubdomains(image_labels=image_labels[split[0]+split[1]:], image_dir=image_dir, mask_dir=mask_dir, transform=None,
-                                            target_transform=None, data_augmentation=None, subdomains_dist=args.subdomains_dist, patch_size=640)
-
-        # Define dataloaders
-        dataloader_train = DataLoader(train_dataset, batch_size=args.batch_size_training, shuffle=True) 
-        dataloader_val = DataLoader(val_dataset, batch_size=args.batch_size_testing, shuffle=False)
-        dataloader_test = DataLoader(test_dataset, batch_size=args.batch_size_testing, shuffle=False)
-
-        return {"train": dataloader_train, "val": dataloader_val, "test": dataloader_test}, {"train": train_dataset, "val": val_dataset, "test": test_dataset}
+from utils.losses import CombiLoss
 
 def evaluate(args, unet, losses, dataloaders, datasets):
     plot_results(unet=unet, savepath=args.save_path, epoch_number="best", train_dataset=datasets["train"], val_dataset=datasets["val"])
@@ -57,7 +38,7 @@ def objective(trial):
     try:
         os.makedirs(args.save_path)
     except:
-        print("Results directory already exists!")
+        print("Results directory already exists!", flush=True)
         exit()
 
 
@@ -70,21 +51,21 @@ def objective(trial):
 
     # Set devices
     devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())] or ["cpu"]
-    print("Available GPUs:", devices)
+    print("Available GPUs:", devices, flush=True)
 
     # Set datasets
-    image_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/Inputs"
-    mask_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/Labels"
+    image_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/Inputs"
+    mask_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/Labels"
     
     try:
-        args.batch_size_training = 16 #trial.suggest_categorical("batch_size", [16])
+        args.batch_size_training = trial.suggest_categorical("batch_size", [1, 2, 4, 8, 16, 32])
         dataloaders, datasets = init_data(args, image_dir, mask_dir)
 
         # Generate the model
-        args.depth = 4 #trial.suggest_categorical("depth", [4])
-        args.complexity = 16 #trial.suggest_categorical("complexity", [16])
-        args.kernel_size = 7 #trial.suggest_categorical("kernel_size", [7])
-        args.num_convs = 3 #trial.suggest_categorical("num_convs", [3])
+        args.depth = trial.suggest_categorical("depth", [2, 3, 4, 5, 6])
+        args.complexity = trial.suggest_categorical("complexity", [8, 16, 32])
+        args.kernel_size = trial.suggest_categorical("kernel_size", [3, 5, 7])
+        args.num_convs = trial.suggest_categorical("num_convs", [2, 3, 4])
 
         # Define loss function options
         loss_functions = {
@@ -98,9 +79,9 @@ def objective(trial):
         }
 
         # Generate the optimizers
-        lr = 1e-4 # trial.suggest_categorical("lr", [1e-4])
+        lr = trial.suggest_categorical("lr", [1e-3, 2e-4, 1e-4, 5e-5, 1e-5])
         weight_decay_adam = 0 #trial.suggest_categorical("weight_decay", [0])
-        loss_fn_alpha = 1. #trial.suggest_categorical("loss_alpha", [1.])
+        loss_fn_alpha = trial.suggest_categorical("loss_alpha", [1., 0., 0.25, 0.75, 0.5])
 
         # Select the loss function based on the trial's suggestion
         loss_function_name = trial.suggest_categorical("loss function", list(loss_functions.keys()))
@@ -124,7 +105,8 @@ def objective(trial):
                                                                     complexity=args.complexity, dropout_rate=0.0, devices=devices, 
                                                                     num_convs=args.num_convs, weight_decay_adam=weight_decay_adam, 
                                                                     loss_fn_alpha=loss_fn_alpha, lr=lr,
-                                                                    loss_func=loss_function, val_loss_func=loss_functions[args.val_loss], verbose=False, track_loss_functions=loss_functions)
+                                                                    loss_func=loss_function, val_loss_func=loss_functions[args.val_loss], verbose=False,
+                                                                 num_channels=5, plot_freq=1, track_loss_functions=loss_functions)
         
         loss = np.min(data["val_losses"])
 
@@ -132,21 +114,21 @@ def objective(trial):
         evaluate(args, unet, data, dataloaders, datasets)
         
     except Exception as e:
-        print(f"Training failed with exception: {e}")
+        print(f"Training failed with exception: {e}", flush=True)
         loss = 1
     
-    print("Finished!")
+    print("Finished!", flush=True)
     return loss
 
 
 if __name__ == "__main__":
-    print("Running")
-    STUDY_DIR = "/scratch/e451412/code/results/pki_5000_loss_functions"
+    print("Running", flush=True)
+    STUDY_DIR = "/scratch/e451412/code/results/pkixy_5000_new"
     study_dir = pathlib.Path(STUDY_DIR)
     study_dir.mkdir(parents=True, exist_ok=True)
 
     study = optuna.create_study(direction="minimize", storage=f"sqlite:///{STUDY_DIR}/hyperparam_opti.db", study_name="search", load_if_exists=True)
-    study.optimize(objective, n_trials=50)
+    study.optimize(objective, n_trials=100)
 
     pruned_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.PRUNED])
     complete_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.COMPLETE])

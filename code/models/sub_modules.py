@@ -3,7 +3,7 @@ from .model2d_components import DoubleConv, Down, Up, OutConv
 
 class Encoder(nn.Module):
     """Encoder module for a U-Net architecture."""
-    def __init__(self, n_channels=3, depth=4, complexity=32, dropout_rate=0.0, kernel_size=3, num_convs=2):
+    def __init__(self, n_channels=3, depth=4, complexity=32, dropout_rate=0.0, kernel_size=3, num_convs=2, padding=None):
         """
         Initializes the Encoder module.
 
@@ -16,11 +16,12 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         
         channels = [complexity * 2 ** i for i in range(depth + 1)]
-        self.inc = DoubleConv(n_channels, complexity, dropout_rate=dropout_rate, kernel_size=kernel_size, num_convs=num_convs)
+        self.inc = DoubleConv(n_channels, complexity, dropout_rate=dropout_rate, kernel_size=kernel_size, num_convs=num_convs, padding=padding)
         self.contraction = nn.ModuleList()
+        self.padding = padding
         
         for i in range(depth):
-            self.contraction.append(Down(channels[i], channels[i + 1], dropout_rate=dropout_rate, kernel_size=kernel_size, num_convs=num_convs))
+            self.contraction.append(Down(channels[i], channels[i + 1], dropout_rate=dropout_rate, kernel_size=kernel_size, num_convs=num_convs, padding=padding))
         
     def forward(self, x):
         """
@@ -36,7 +37,7 @@ class Encoder(nn.Module):
     
 class Decoder(nn.Module):
     """Decoder module for a U-Net architecture."""
-    def __init__(self, n_channels=3, depth=4, n_classes=3, complexity=32, dropout_rate=0.0, kernel_size=3, num_convs=2):
+    def __init__(self, n_channels=3, depth=4, n_classes=3, complexity=32, dropout_rate=0.0, kernel_size=3, num_convs=2, padding=None):
         """
         Initializes the Decoder module.
 
@@ -51,9 +52,10 @@ class Decoder(nn.Module):
         
         channels = [complexity * 2 ** i for i in range(depth + 1)]
         self.expansion = nn.ModuleList()
+        self.padding = padding
         
         for i in range(depth):
-            self.expansion.append(Up(channels[-1 - i], channels[-2 - i], bilinear=False, dropout_rate=dropout_rate, kernel_size=kernel_size, num_convs=num_convs))
+            self.expansion.append(Up(channels[-1 - i], channels[-2 - i], bilinear=False, dropout_rate=dropout_rate, kernel_size=kernel_size, num_convs=num_convs, padding=padding))
         
         self.outc = OutConv(complexity, n_classes)  
 
@@ -78,6 +80,10 @@ class CNNCommunicator(nn.Module):
             padding (int or tuple): Zero-padding added to both sides of the input.
         """
         super(CNNCommunicator, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.padding = padding
 
         # First convolutional layer
         self.conv1 = nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=1, padding=padding)
