@@ -11,12 +11,15 @@ class OutConv(nn.Module):
         return self.conv(x)
 
 class DoubleConv(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels=None, dropout_rate=0.1, kernel_size=5, num_convs=2):
+    def __init__(self, in_channels, out_channels, mid_channels=None, dropout_rate=0.1, kernel_size=5, num_convs=2, padding=None):
         super().__init__()
         if not mid_channels:
             mid_channels = out_channels
         self.kernel_size = kernel_size
-        self.padding = kernel_size // 2
+        if padding is None:
+            self.padding = kernel_size // 2
+        else:
+            self.padding = padding
 
         # self.double_conv = nn.Sequential(
         #     nn.Conv2d(in_channels, mid_channels, kernel_size=self.kernel_size, padding=self.padding, bias=False),
@@ -56,27 +59,27 @@ class DoubleConv(nn.Module):
         return self.double_conv(x)
 
 class Down(nn.Module):
-    def __init__(self, in_channels, out_channels, dropout_rate=0.1, num_convs=2, kernel_size=3):
+    def __init__(self, in_channels, out_channels, dropout_rate=0.1, num_convs=2, kernel_size=3, padding=None):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
             nn.MaxPool2d(2),
-            DoubleConv(in_channels, out_channels, dropout_rate=dropout_rate, num_convs=num_convs, kernel_size=kernel_size)
+            DoubleConv(in_channels, out_channels, dropout_rate=dropout_rate, num_convs=num_convs, kernel_size=kernel_size, padding=padding)
         )
 
     def forward(self, x):
         return self.maxpool_conv(x)
 
 class Up(nn.Module):
-    def __init__(self, in_channels, out_channels, bilinear=True, dropout_rate=0.1, num_convs=2, kernel_size=3):
+    def __init__(self, in_channels, out_channels, bilinear=True, dropout_rate=0.1, num_convs=2, kernel_size=3, padding=None):
         super().__init__()
 
         # if bilinear, use the normal convolutions to reduce the number of channels
         if bilinear:
             self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-            self.conv = DoubleConv(in_channels, out_channels, in_channels // 2, dropout_rate=dropout_rate, num_convs=num_convs, kernel_size=kernel_size)
+            self.conv = DoubleConv(in_channels, out_channels, in_channels // 2, dropout_rate=dropout_rate, num_convs=num_convs, kernel_size=kernel_size, padding=padding)
         else:
-            self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
-            self.conv = DoubleConv(in_channels, out_channels, dropout_rate=dropout_rate, num_convs=num_convs, kernel_size=kernel_size)
+            self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2, padding=padding)
+            self.conv = DoubleConv(in_channels, out_channels, dropout_rate=dropout_rate, num_convs=num_convs, kernel_size=kernel_size, padding=padding)
 
     def forward(self, x1, x2):
         x1 = self.up(x1)
