@@ -4,6 +4,8 @@ import torch
 import contextlib
 import time
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
+
 from .visualization import plot_results
 
 def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_precision, verbose=False):
@@ -44,6 +46,8 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
     # Check to make sure  
     if num_comm_fmaps == 0:
         comm = False
+
+    writer = SummaryWriter(save_path)
     
     # Initialize the network architecture
     unet = model(n_channels=3, n_classes=1, input_shape=(640, 640), num_comm_fmaps=num_comm_fmaps, devices=devices, depth=depth,
@@ -74,7 +78,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
     # Iterate over the epochs
     for epoch in range(num_epochs):
         unet.train()
-        epoch_losses = []  # Initialize losses for the epoch
+        epoch_losses = 0.0  # Initialize losses for the epoch
         
         for images, masks in tqdm(dataloader_train, disable=(not verbose)):
             optimizer.zero_grad()
@@ -94,7 +98,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
             scaler.scale(l).backward()
 
             losses.append(l.item())  # Append loss to global losses list
-            epoch_losses.append(l.item())  # Append loss to epoch losses list
+            epoch_losses += l.item()  # Append loss to epoch losses list
 
             # Weight upgrade of the encoders
             with torch.no_grad():
@@ -138,6 +142,10 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             unet.save_weights(save_path=os.path.join(save_path, "unet.pth"))
+
+        writer.add_scalar("train_loss", epoch_losses/len(dataloader_train), epoch)
+        writer.add_scalar("val_loss", val_loss, epoch)
+        writer.add_scalar("learning_rate", optimizer.param_groups[0]["lr"], epoch)
             
         if torch.cuda.is_available():
             torch.cuda.synchronize()

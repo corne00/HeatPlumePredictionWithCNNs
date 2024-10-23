@@ -16,6 +16,7 @@ module load py-numpy py-geopandas py-tqdm py-pillow
 module load py-matplotlib py-geopandas cuda py-scikit-learn
 module load py-pip
 python -m pip install --user optuna
+python -m pip install --user tensorboard
 
 python -m pip install --user typing-extensions --upgrade
 
