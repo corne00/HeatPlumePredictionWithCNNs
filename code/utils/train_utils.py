@@ -31,8 +31,7 @@ def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_
 # Train function
 def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset, val_dataset, scaler, data_type, half_precision, comm, num_epochs, 
                          num_comm_fmaps, save_path, subdomains_dist, exchange_fmaps, devices, num_convs,
-                         padding, depth, kernel_size, complexity, communication_network=None, dropout_rate=0.0, weight_decay_adam:float=1e-5, 
-                         loss_fn_alpha:float=1., lr:float=1e-4, plot_freq:int=10,
+                         padding, depth, kernel_size, complexity, communication_network=None, dropout_rate=0.0, weight_decay_adam:float=1e-5, lr:float=1e-4, plot_freq:int=10,
                          loss_func=None, val_loss_func=None, verbose=False, num_channels=3, track_loss_functions=None):
     
     # Check to make sure  
@@ -57,10 +56,6 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
     optimizer = torch.optim.Adam(parameters, lr=lr, weight_decay=weight_decay_adam)
     scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.5)
 
-    if loss_func is None:
-        loss = CombiLoss(loss_fn_alpha)
-    else:
-        loss = loss_func
     training_losses = []
     summary_losses = {}
 
@@ -88,7 +83,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
                 predictions = unet(images)
 
                 ## Backward propagation
-                l = loss(predictions, masks)
+                l = loss_func(predictions, masks)
                 
             scaler.scale(l).backward()
 
@@ -132,7 +127,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         val_loss = compute_validation_loss(unet, val_loss_func, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
         validation_losses.append(val_loss)
         # print(f'Validation Loss: {val_loss:.4f}, Train Loss: {losses[-1]:.4f}')
-        epochs.set_postfix_str(f"train loss: {val_loss:.2e}, val loss: {val_loss:.2e}, lr: {optimizer.param_groups[0]['lr']:.1e}")
+        epochs.set_postfix_str(f"train loss: {epoch_losses/len(dataloader_train):.2e}, val loss: {val_loss:.2e}, lr: {optimizer.param_groups[0]['lr']:.1e}")
         
         # Check for improvement and save best model
         if val_loss < best_val_loss:

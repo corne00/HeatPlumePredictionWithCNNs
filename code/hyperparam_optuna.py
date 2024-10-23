@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch.cuda.amp import GradScaler
 import optuna
-from utils.losses import ThresholdedMSELoss, WeightedMSELoss
+from utils.losses import ThresholdedMAELoss, WeightedMAELoss, CombiRMSE_and_MAELoss
 
 from models import *
 from utils import parse_args, save_args_to_json, plot_results
@@ -58,41 +58,36 @@ def objective(trial):
     mask_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/Labels"
     
     try:
-        args.batch_size_training = trial.suggest_categorical("batch_size", [1, 2, 4, 8, 16, 32])
+        args.batch_size_training = trial.suggest_categorical("batch_size", [4, 8, 16])
         dataloaders, datasets = init_data(args, image_dir, mask_dir)
 
         # Generate the model
-        args.depth = trial.suggest_categorical("depth", [2, 3, 4, 5, 6])
-        args.complexity = trial.suggest_categorical("complexity", [8, 16, 32])
-        args.kernel_size = trial.suggest_categorical("kernel_size", [3, 5, 7])
-        args.num_convs = trial.suggest_categorical("num_convs", [2, 3, 4])
+        args.depth = trial.suggest_categorical("depth", [6])
+        args.complexity = trial.suggest_categorical("complexity", [32, 64])
+        args.kernel_size = trial.suggest_categorical("kernel_size", [5, 7])
+        args.num_convs = trial.suggest_categorical("num_convs", [2, 3])
 
         # Define loss function options
         loss_functions = {
             "mse": torch.nn.MSELoss(),
-            "combi": CombiLoss(0.5),
-            "combi_RMSE_MAE": CombiRMSE_and_MAELoss(),
+            "combi_0_5": CombiLoss(0.5),
+            "combi_0_25": CombiLoss(0.25),
             "l1": torch.nn.L1Loss(),
-            "thresholded_mse": ThresholdedMSELoss(),
-            "weighted_mse_epsilon_0_1": WeightedMSELoss(epsilon=0.1),
-            "weighted_mse_epsilon_0_001": WeightedMSELoss(epsilon=0.001),
+            "combi_RMSE_MAE": CombiRMSE_and_MAELoss(),
+            "thresholded_mae_0_02": ThresholdedMAELoss(threshold=0.02, weight_ratio=0.1),
+            "thresholded_mae_0_04": ThresholdedMAELoss(threshold=0.04, weight_ratio=0.1),
+            "thresholded_mae_0_01": ThresholdedMAELoss(threshold=0.01, weight_ratio=0.1),
+            "weighted_mae_epsilon_0_1": WeightedMAELoss(epsilon=0.1),
         }
 
         # Generate the optimizers
-        lr = trial.suggest_categorical("lr", [1e-3, 2e-4, 1e-4, 5e-5, 1e-5])
-        weight_decay_adam = 0 #trial.suggest_categorical("weight_decay", [0])
-        loss_fn_alpha = trial.suggest_categorical("loss_alpha", [1., 0., 0.25, 0.75, 0.5])
+        args.lr = trial.suggest_categorical("lr", [1e-3, 2e-4, 1e-4, 5e-5, 1e-5])
+        args.weight_decay_adam = 0 #trial.suggest_categorical("weight_decay", [0])
 
         # Select the loss function based on the trial's suggestion
-        loss_function_name = trial.suggest_categorical("loss function", list(loss_functions.keys()))
-        loss_function = loss_functions[loss_function_name]
+        args.loss_function = trial.suggest_categorical("loss function", list(loss_functions.keys()))
+        loss_function = loss_functions[args.loss_function]
         
-        # Add the selected values to args
-        args.lr = lr
-        args.loss_function = loss_function_name
-        args.weight_decay_adam = weight_decay_adam
-        args.loss_fn_alpha = 1.
-
         save_args_to_json(args=args, filename=os.path.join(args.save_path, "args.json"))
 
         unet, data = train_parallel_model(model=MultiGPU_UNet_with_comm, dataloader_val=dataloaders["val"], 
@@ -103,10 +98,9 @@ def objective(trial):
                                                                     exchange_fmaps=args.exchange_fmaps, padding=args.padding, 
                                                                     depth=args.depth, kernel_size=args.kernel_size, communication_network=None, 
                                                                     complexity=args.complexity, dropout_rate=0.0, devices=devices, 
-                                                                    num_convs=args.num_convs, weight_decay_adam=weight_decay_adam, 
-                                                                    loss_fn_alpha=loss_fn_alpha, lr=lr,
+                                                                    num_convs=args.num_convs, weight_decay_adam=args.weight_decay_adam, lr=args.lr,
                                                                     loss_func=loss_function, val_loss_func=loss_functions[args.val_loss], verbose=False,
-                                                                 num_channels=5, plot_freq=1, track_loss_functions=loss_functions)
+                                                                    num_channels=3, plot_freq=10, track_loss_functions=loss_functions)
         
         loss = np.min(data["val_losses"])
 

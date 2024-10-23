@@ -31,30 +31,54 @@ class WeightedMSELoss(nn.Module):
         else:
             return weighted_mse.mean()
 
-class ThresholdedMSELoss(nn.Module):
+class WeightedMAELoss(nn.Module):
+    def __init__(self, epsilon:float=1e-1, only_target_based:bool=False):
+        """
+        Args:
+        - epsilon (float) : value to make sure that every point in the domain gets at least some weight
+        - only_target_based (bool) : if True, only targets are used for constructing weight mask
+        """
+        super(WeightedMAELoss, self).__init__()
+        self.epsilon = epsilon
+        self.only_target_based = only_target_based
+        self.name = rf"WeightedMSELoss (e={self.epsilon})"
+
+    
+    def forward(self, prediction, target, pixel_wise=False):
+        # Calculate the element-wise maximum between prediction and target
+        if self.only_target_based:
+            weight = target + self.epsilon
+        else:
+            weight = torch.max(prediction, target) + self.epsilon
+        
+        # Return the weighted mean absolute error
+        weighted_mae = weight * torch.nn.L1Loss(reduction='none')(prediction, target)
+        if pixel_wise is True:
+            return weighted_mae
+        else:
+            return weighted_mae.mean()
+
+class ThresholdedMAELoss(nn.Module):
     """
     Function that puts more weight on pixels close to the stream lines.
     """
     def __init__(self, threshold:float=0.02, weight_ratio=0.1):
-        super(ThresholdedMSELoss, self).__init__()
+        super(ThresholdedMAELoss, self).__init__()
         self.threshold = threshold
         self.weight_ratio = weight_ratio
-        self.name = rf"ThresholdedMSE (t={threshold}, w={weight_ratio})"
+        self.name = rf"ThresholdedMAE (t={threshold}, w={weight_ratio})"
 
     def forward(self, prediction, target, pixel_wise=False):
         # Calculate the element-wise maximum between prediction and target
         weight = torch.where(target > self.threshold, 1., self.weight_ratio)
-        
-        # Compute the squared error
-        mse = (prediction - target) ** 2
-        
-        # Return the weighted mean squared error
-        weighted_mse = weight * mse
+                
+        # Return the weighted mean absolute error
+        weighted_mae = weight * torch.nn.L1Loss(reduction='none')(prediction, target)
 
         if pixel_wise is True:
-            return weighted_mse
+            return weighted_mae
         else:
-            return weighted_mse.mean()
+            return weighted_mae.mean()
     
 class CombiLoss(nn.Module):
     """
@@ -92,7 +116,7 @@ class CombiRMSE_and_MAELoss(nn.Module):
         rmse_loss = torch.sqrt(self.mse(x, y))
         mae_loss = self.mae(x, y)
 
-        combined_loss = self.alpha * rmse_loss + (1 - self.alpha) * mae_loss
+        combined_loss = rmse_loss + mae_loss
 
         if pixel_wise:
             return combined_loss
