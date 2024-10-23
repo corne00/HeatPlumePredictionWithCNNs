@@ -114,22 +114,21 @@ def objective(trial):
 
         save_args_to_json(args=args, filename=os.path.join(args.save_path, "args.json"))
 
-        unet, val_losses, training_losses = train_parallel_model(model=MultiGPU_UNet_with_comm, dataloader_val=dataloaders["val"], 
-                                                                 dataloader_train=dataloaders["train"], scaler=scaler, data_type=data_type, 
-                                                                 half_precision=True, train_dataset=datasets["train"], val_dataset=datasets["val"], 
-                                                                 comm=args.comm, num_epochs=args.num_epochs, num_comm_fmaps=args.num_comm_fmaps,  
-                                                                 save_path=args.save_path, subdomains_dist=args.subdomains_dist, 
-                                                                 exchange_fmaps=args.exchange_fmaps, padding=args.padding, 
-                                                                 depth=args.depth, kernel_size=args.kernel_size, communication_network=None, 
-                                                                 complexity=args.complexity, dropout_rate=0.0, devices=devices, 
-                                                                 num_convs=args.num_convs, weight_decay_adam=weight_decay_adam, 
-                                                                 loss_fn_alpha=loss_fn_alpha, lr=lr,
-                                                                 loss_func=loss_function, val_loss_func=torch.nn.L1Loss(), verbose=False)
+        unet, data = train_parallel_model(model=MultiGPU_UNet_with_comm, dataloader_val=dataloaders["val"], 
+                                                                    dataloader_train=dataloaders["train"], scaler=scaler, data_type=data_type, 
+                                                                    half_precision=True, train_dataset=datasets["train"], val_dataset=datasets["val"], 
+                                                                    comm=args.comm, num_epochs=args.num_epochs, num_comm_fmaps=args.num_comm_fmaps,  
+                                                                    save_path=args.save_path, subdomains_dist=args.subdomains_dist, 
+                                                                    exchange_fmaps=args.exchange_fmaps, padding=args.padding, 
+                                                                    depth=args.depth, kernel_size=args.kernel_size, communication_network=None, 
+                                                                    complexity=args.complexity, dropout_rate=0.0, devices=devices, 
+                                                                    num_convs=args.num_convs, weight_decay_adam=weight_decay_adam, 
+                                                                    loss_fn_alpha=loss_fn_alpha, lr=lr,
+                                                                    loss_func=loss_function, val_loss_func=loss_functions[args.val_loss], verbose=False, track_loss_functions=loss_functions)
         
-        loss = np.min(val_losses)
+        loss = np.min(data["val_losses"])
 
         # Save and calculate losses
-        data = {"val_losses": val_losses,"training_losses": training_losses}
         evaluate(args, unet, data, dataloaders, datasets)
         
     except Exception as e:
