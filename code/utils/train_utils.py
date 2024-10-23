@@ -4,16 +4,18 @@ import torch
 import contextlib
 import time
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
+
 from .visualization import plot_results
 
-def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_precision):
+def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_precision, verbose=False):
     model.eval()
     total_loss = 0.0
     num_batches = 0
     
     with torch.no_grad():
         with (torch.autocast(device_type='cuda', dtype=data_type) if half_precision else contextlib.nullcontext()):
-            for images, masks in tqdm(dataloader, disable=True):
+            for images, masks in tqdm(dataloader, disable=(not verbose)):
                 images = [im.half() for im in images]
                 masks = masks.to(device, dtype=torch.half)
 
@@ -37,17 +39,21 @@ class CombiLoss(torch.nn.Module):
 # Train function
 def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset, val_dataset, scaler, data_type, half_precision, comm, num_epochs, 
                          num_comm_fmaps, save_path, subdomains_dist, exchange_fmaps, devices, num_convs,
-                         padding, depth, kernel_size, complexity, communication_network=None, dropout_rate=0.0, weight_decay_adam:float=1e-5, loss_fn_alpha:float=1., lr:float=1e-4):
+                         padding, depth, kernel_size, complexity, communication_network=None, dropout_rate=0.0, weight_decay_adam:float=1e-5, 
+                         loss_fn_alpha:float=1., lr:float=1e-4,
+                         loss_func=None, val_loss_func=None, verbose=False):
     
     # Check to make sure  
     if num_comm_fmaps == 0:
         comm = False
+
+    writer = SummaryWriter(save_path)
     
     # Initialize the network architecture
     unet = model(n_channels=3, n_classes=1, input_shape=(640, 640), num_comm_fmaps=num_comm_fmaps, devices=devices, depth=depth,
                                    subdom_dist=subdomains_dist, bilinear=False, comm=comm, complexity=complexity, dropout_rate=dropout_rate, 
-                                   kernel_size=kernel_size, padding=padding, communicator_type=None, comm_network_but_no_communication=(not exchange_fmaps), num_convs=num_convs,
-                                   communication_network_def=communication_network)
+                                   kernel_size=kernel_size, padding=padding, communicator_type=None, comm_network_but_no_communication=(not exchange_fmaps), 
+                                   communication_network_def=communication_network, num_convs=num_convs)
     
     unet.save_weights(save_path=os.path.join(save_path, "unet.pth"))
               
@@ -57,7 +63,11 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         parameters = list(unet.encoders[0].parameters()) + list(unet.decoders[0].parameters())
         
     optimizer = torch.optim.Adam(parameters, lr=lr, weight_decay=weight_decay_adam)
-    loss = CombiLoss(loss_fn_alpha)
+
+    if loss_func is None:
+        loss = CombiLoss(loss_fn_alpha)
+    else:
+        loss = loss_func
     losses = []
 
     # Wrap your training loop with tqdm
@@ -68,9 +78,9 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
     # Iterate over the epochs
     for epoch in range(num_epochs):
         unet.train()
-        epoch_losses = []  # Initialize losses for the epoch
+        epoch_losses = 0.0  # Initialize losses for the epoch
         
-        for images, masks in tqdm(dataloader_train, disable=True):
+        for images, masks in tqdm(dataloader_train, disable=(not verbose)):
             optimizer.zero_grad()
             
             with (torch.autocast(device_type='cuda', dtype=data_type) if half_precision else contextlib.nullcontext()):
@@ -88,7 +98,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
             scaler.scale(l).backward()
 
             losses.append(l.item())  # Append loss to global losses list
-            epoch_losses.append(l.item())  # Append loss to epoch losses list
+            epoch_losses += l.item()  # Append loss to epoch losses list
 
             # Weight upgrade of the encoders
             with torch.no_grad():
@@ -118,7 +128,12 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
                 unet.decoders[i].load_state_dict(unet.decoders[0].state_dict())
     
         # Compute and print validation loss
-        val_loss = compute_validation_loss(unet, torch.nn.MSELoss(), dataloader_val, devices[0], data_type=data_type, half_precision=half_precision)
+        if val_loss_func is None:
+            val_loss_func = torch.nn.MSELoss()
+        else:
+            val_loss_func = val_loss_func
+
+        val_loss = compute_validation_loss(unet, val_loss_func, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
         print(f'Validation Loss (Dice): {val_loss:.4f}, Train Loss: {losses[-1]:.4f}')
         
         validation_losses.append(val_loss)
@@ -127,6 +142,10 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             unet.save_weights(save_path=os.path.join(save_path, "unet.pth"))
+
+        writer.add_scalar("train_loss", epoch_losses/len(dataloader_train), epoch)
+        writer.add_scalar("val_loss", val_loss, epoch)
+        writer.add_scalar("learning_rate", optimizer.param_groups[0]["lr"], epoch)
             
         if torch.cuda.is_available():
             torch.cuda.synchronize()

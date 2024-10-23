@@ -16,10 +16,11 @@ module load py-numpy py-geopandas py-tqdm py-pillow
 module load py-matplotlib py-geopandas cuda py-scikit-learn
 module load py-pip
 python -m pip install --user optuna
+python -m pip install --user tensorboard
 
 python -m pip install --user typing-extensions --upgrade
 
 # Execute the command
 cd /scratch/e451412/code
-srun python ./hyperparam_optuna.py --num_epochs 100
+srun python ./hyperparam_optuna.py --num_epochs 20
 

@@ -4,7 +4,11 @@ import json
 
 def parse_args():
     # Get the current date and time formatted as YYYY-DD-HH-MM
-    current_time = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    # Get the current date and time formatted as YYYY_MM_DD_HH_MM_SS_MS (milliseconds)
+    now = datetime.datetime.now()
+    current_time = now.strftime("%Y_%m_%d_%H_%M_%S_") + f"{now.microsecond // 1000:03d}"
+
+    # current_time = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     
     parser = argparse.ArgumentParser(description='Set subdomain distribution and other training parameters.')
 
