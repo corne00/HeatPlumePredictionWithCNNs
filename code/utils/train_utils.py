@@ -70,7 +70,8 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         loss = CombiLoss(loss_fn_alpha)
     else:
         loss = loss_func
-    losses = []
+    training_losses = []
+    summary_losses = {}
 
     # Wrap your training loop with tqdm
     start_time = time.time()
@@ -100,7 +101,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
                 
             scaler.scale(l).backward()
 
-            losses.append(l.item())  # Append loss to global losses list
+            training_losses.append(l.item())  # Append loss to global losses list
             epoch_losses += l.item()  # Append loss to epoch losses list
 
             # Weight upgrade of the encoders
@@ -150,8 +151,14 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         writer.add_scalar("val_loss", val_loss, epoch)
         writer.add_scalar("learning_rate", optimizer.param_groups[0]["lr"], epoch)
         for name, loss_fct in track_loss_functions.items():
-            writer.add_scalar(f"val-{name}", compute_validation_loss(unet, loss_fct, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision, verbose=False), epoch)
-            writer.add_scalar(f"train-{name}", compute_validation_loss(unet, loss_fct, dataloader_train, devices[0], data_type=data_type, half_precision=half_precision, verbose=False), epoch)
+            try:
+                tmp_train_loss = compute_validation_loss(unet, loss_fct, dataloader_train, devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
+                writer.add_scalar(f"train-{name}", tmp_train_loss, epoch)
+                summary_losses[f"train-{name}"] = tmp_train_loss
+                tmp_val_loss = compute_validation_loss(unet, loss_fct, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
+                writer.add_scalar(f"val-{name}", tmp_val_loss, epoch)
+                summary_losses[f"val-{name}"] = tmp_val_loss
+            except: pass
             
         scheduler.step(val_loss)
 
@@ -167,10 +174,11 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         #     max_memory_used = torch.cuda.max_memory_allocated() / 1024**3  # Convert to GB
         #     print(f"Maximum GPU Memory Used in Epoch {epoch+1}: {max_memory_used:.2f} GB")
         #     torch.cuda.reset_peak_memory_stats()
-
+    summary_losses["val_losses"] = validation_losses
+    summary_losses["training_losses"] = training_losses
     print(f"Training the model {'with' if comm else 'without'} communication network took: {time.time() - start_time:.2f} seconds.")
     
     # Load the best weights
     unet.load_weights(load_path=os.path.join(save_path, "unet.pth"), device=devices[0])
     
-    return unet, validation_losses, losses
+    return unet, summary_losses
