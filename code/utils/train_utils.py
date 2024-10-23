@@ -76,7 +76,8 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
     best_val_loss = float('inf')
 
     # Iterate over the epochs
-    for epoch in range(num_epochs):
+    epochs = tqdm(range(num_epochs), desc="epochs", disable=False)
+    for epoch in epochs:
         unet.train()
         epoch_losses = 0.0  # Initialize losses for the epoch
         
@@ -134,9 +135,9 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
             val_loss_func = val_loss_func
 
         val_loss = compute_validation_loss(unet, val_loss_func, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
-        print(f'Validation Loss (Dice): {val_loss:.4f}, Train Loss: {losses[-1]:.4f}')
-        
         validation_losses.append(val_loss)
+        # print(f'Validation Loss: {val_loss:.4f}, Train Loss: {losses[-1]:.4f}')
+        epochs.set_postfix_str(f"train loss: {val_loss:.2e}, val loss: {val_loss:.2e}, lr: {optimizer.param_groups[0]['lr']:.1e}")
         
         # Check for improvement and save best model
         if val_loss < best_val_loss:
