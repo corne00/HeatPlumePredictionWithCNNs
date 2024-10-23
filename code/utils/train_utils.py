@@ -5,7 +5,7 @@ import contextlib
 import time
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
-
+from .losses import *
 from .visualization import plot_results
 
 def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_precision, verbose=False):
@@ -41,7 +41,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
                          num_comm_fmaps, save_path, subdomains_dist, exchange_fmaps, devices, num_convs,
                          padding, depth, kernel_size, complexity, communication_network=None, dropout_rate=0.0, weight_decay_adam:float=1e-5, 
                          loss_fn_alpha:float=1., lr:float=1e-4,
-                         loss_func=None, val_loss_func=None, verbose=False):
+                         loss_func=None, val_loss_func=None, verbose=False, track_loss_functions=None):
     
     # Check to make sure  
     if num_comm_fmaps == 0:
@@ -146,6 +146,9 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         writer.add_scalar("train_loss", epoch_losses/len(dataloader_train), epoch)
         writer.add_scalar("val_loss", val_loss, epoch)
         writer.add_scalar("learning_rate", optimizer.param_groups[0]["lr"], epoch)
+        for name, loss_fct in track_loss_functions.items():
+            writer.add_scalar(f"val-{name}", compute_validation_loss(unet, loss_fct, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision, verbose=False), epoch)
+            writer.add_scalar(f"train-{name}", compute_validation_loss(unet, loss_fct, dataloader_train, devices[0], data_type=data_type, half_precision=half_precision, verbose=False), epoch)
             
         if torch.cuda.is_available():
             torch.cuda.synchronize()

@@ -123,7 +123,7 @@ def objective(trial):
                                                                  complexity=args.complexity, dropout_rate=0.0, devices=devices, 
                                                                  num_convs=args.num_convs, weight_decay_adam=weight_decay_adam, 
                                                                  loss_fn_alpha=loss_fn_alpha, lr=lr,
-                                                                 loss_func=loss_function, val_loss_func=torch.nn.L1Loss(), verbose=False)
+                                                                 loss_func=loss_function, val_loss_func=loss_functions[args.val_loss], verbose=False, track_loss_functions=loss_functions)
         
         loss = np.min(val_losses)
 
