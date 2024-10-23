@@ -5,6 +5,7 @@ import contextlib
 import time
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
+from torch.optim import lr_scheduler
 from .losses import *
 from .visualization import plot_results
 
@@ -63,6 +64,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         parameters = list(unet.encoders[0].parameters()) + list(unet.decoders[0].parameters())
         
     optimizer = torch.optim.Adam(parameters, lr=lr, weight_decay=weight_decay_adam)
+    scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.5)
 
     if loss_func is None:
         loss = CombiLoss(loss_fn_alpha)
@@ -151,6 +153,8 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
             writer.add_scalar(f"val-{name}", compute_validation_loss(unet, loss_fct, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision, verbose=False), epoch)
             writer.add_scalar(f"train-{name}", compute_validation_loss(unet, loss_fct, dataloader_train, devices[0], data_type=data_type, half_precision=half_precision, verbose=False), epoch)
             
+        scheduler.step(val_loss)
+
         if torch.cuda.is_available():
             torch.cuda.synchronize()
             torch.cuda.empty_cache()
