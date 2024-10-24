@@ -45,17 +45,17 @@ def objective(trial):
     print("Available GPUs:", devices, flush=True)
 
     # Set datasets
-    image_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/Inputs"
-    mask_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/Labels"
+    image_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/Inputs"
+    mask_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/Labels"
     
     try:
-        args.batch_size_training = trial.suggest_categorical("batch_size", [4, 8, 16])
+        args.batch_size_training = trial.suggest_categorical("batch_size", [2, 4, 8, 16, 32])
         dataloaders, datasets = init_data(args, image_dir, mask_dir)
 
         # Generate the model
-        args.depth = trial.suggest_categorical("depth", [6])
-        args.complexity = trial.suggest_categorical("complexity", [32, 64])
-        args.kernel_size = trial.suggest_categorical("kernel_size", [5, 7])
+        args.depth = trial.suggest_categorical("depth", [4,5,6])
+        args.complexity = trial.suggest_categorical("complexity", [4, 8, 16, 32, 64])
+        args.kernel_size = trial.suggest_categorical("kernel_size", [3, 5, 7])
         args.num_convs = trial.suggest_categorical("num_convs", [2, 3])
 
         # Define loss function options
@@ -70,6 +70,14 @@ def objective(trial):
             "thresholded_mae_0_04": ThresholdedMAELoss(threshold=0.04, weight_ratio=0.1),
             "thresholded_mae_0_01": ThresholdedMAELoss(threshold=0.01, weight_ratio=0.1),
             "weighted_mae_epsilon_0_1": WeightedMAELoss(epsilon=0.1),
+            # "weighted_mae_epsilon_0_2": WeightedMAELoss(epsilon=0.2),
+            # "weighted_mae_epsilon_0_05": WeightedMAELoss(epsilon=0.05),
+        }
+
+        track_loss_functions = {
+            "mse": torch.nn.MSELoss(),
+            "l1": torch.nn.L1Loss(),
+            # "combi_RMSE_MAE": CombiRMSE_and_MAELoss(),
         }
 
         # Generate the optimizers
@@ -77,7 +85,8 @@ def objective(trial):
         args.weight_decay_adam = 0 #trial.suggest_categorical("weight_decay", [0])
 
         # Select the loss function based on the trial's suggestion
-        args.loss_function = trial.suggest_categorical("loss function", list(loss_functions.keys()))
+        loss_function_names = list(loss_functions.keys())
+        args.loss_function = trial.suggest_categorical("loss function", loss_function_names)
         loss_function = loss_functions[args.loss_function]
         
         save_args_to_json(args=args, filename=os.path.join(args.save_path, "args.json"))
@@ -92,7 +101,7 @@ def objective(trial):
                                                                     complexity=args.complexity, dropout_rate=0.0, devices=devices, 
                                                                     num_convs=args.num_convs, weight_decay_adam=args.weight_decay_adam, lr=args.lr,
                                                                     loss_func=loss_function, val_loss_func=loss_functions[args.val_loss], verbose=False,
-                                                                    num_channels=3, plot_freq=10, track_loss_functions=loss_functions)
+                                                                    num_channels=3, plot_freq=2, track_loss_functions=track_loss_functions)
         
         loss = np.min(data["val_losses"])
 
@@ -109,7 +118,7 @@ def objective(trial):
 
 if __name__ == "__main__":
     print("Running", flush=True)
-    STUDY_DIR = "/scratch/e451412/code/results/pkixy_5000_new"
+    STUDY_DIR = "/scratch/e451412/code/results/pki_5000_2024_10_23"
     study_dir = pathlib.Path(STUDY_DIR)
     study_dir.mkdir(parents=True, exist_ok=True)
 
