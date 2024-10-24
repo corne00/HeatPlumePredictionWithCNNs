@@ -184,7 +184,7 @@ if __name__ == "__main__":
     print(f"WeightedMSE Loss (pixel-wise): {loss_wmse_pixelwise}")
     
     # --- ThresholdedMSELoss ---
-    thresholded_mse_loss = ThresholdedMSELoss(threshold=0.02, weight_ratio=0.1)
+    thresholded_mse_loss = ThresholdedMAELoss(threshold=0.02, weight_ratio=0.1)
     loss_thresholded = thresholded_mse_loss(prediction, target)
     print(f"Thresholded MSE Loss (mean): {loss_thresholded.item()}")
     loss_thresholded_pixelwise = thresholded_mse_loss(prediction, target, pixel_wise=True)

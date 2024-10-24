@@ -139,9 +139,9 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         writer.add_scalar("learning_rate", optimizer.param_groups[0]["lr"], epoch)
         for name, loss_fct in track_loss_functions.items():
             try:
-                tmp_train_loss = compute_validation_loss(unet, loss_fct, dataloader_train, devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
-                writer.add_scalar(f"train-{name}", tmp_train_loss, epoch)
-                summary_losses[f"train-{name}"] = tmp_train_loss
+                # tmp_train_loss = compute_validation_loss(unet, loss_fct, dataloader_train, devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
+                # writer.add_scalar(f"train-{name}", tmp_train_loss, epoch)
+                # summary_losses[f"train-{name}"] = tmp_train_loss
                 tmp_val_loss = compute_validation_loss(unet, loss_fct, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
                 writer.add_scalar(f"val-{name}", tmp_val_loss, epoch)
                 summary_losses[f"val-{name}"] = tmp_val_loss
