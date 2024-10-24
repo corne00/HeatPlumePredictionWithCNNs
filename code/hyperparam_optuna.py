@@ -42,6 +42,7 @@ def objective(trial):
 
     # Set devices
     devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())] or ["cpu"]
+    devices = ["cuda:3"]
     print("Available GPUs:", devices, flush=True)
 
     # Set datasets

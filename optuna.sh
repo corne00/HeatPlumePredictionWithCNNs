@@ -22,6 +22,5 @@ python -m pip install --user typing-extensions --upgrade
 
 # Execute the command
 cd /scratch/e451412/code
-# srun python ./collect_losses.py
-srun python ./hyperparam_optuna.py --num_epochs 20
+srun python ./hyperparam_optuna.py --num_epochs 50
 
