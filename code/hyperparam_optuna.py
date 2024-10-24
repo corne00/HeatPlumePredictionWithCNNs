@@ -7,14 +7,14 @@ import numpy as np
 import torch
 from torch.cuda.amp import GradScaler
 import optuna
-from utils.losses import ThresholdedMAELoss, WeightedMAELoss, CombiRMSE_and_MAELoss
+from line_profiler_decorator import profiler
 
 from models import *
 from utils import parse_args, save_args_to_json, plot_results
 from dataprocessing import init_data
 from utils.train_utils import *
 from utils.visualization import *
-from utils.losses import CombiLoss
+from utils.losses import ThresholdedMAELoss, WeightedMAELoss, CombiRMSE_and_MAELoss, CombiLoss
 
 def evaluate(args, unet, losses, dataloaders, datasets):
     plot_results(unet=unet, savepath=args.save_path, epoch_number="best", train_dataset=datasets["train"], val_dataset=datasets["val"])
@@ -30,7 +30,7 @@ def evaluate(args, unet, losses, dataloaders, datasets):
 
     plot_losses(avg_training_losses=avg_training_losses, val_losses=losses["val_losses"], save_path=args.save_path)
 
-
+@profiler
 def objective(trial):
     # Load and save the arguments from the arge parser
     args = parse_args()
