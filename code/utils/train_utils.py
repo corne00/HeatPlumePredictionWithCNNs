@@ -6,7 +6,6 @@ import time
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim import lr_scheduler
-from .losses import *
 from .visualization import plot_results
 
 def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_precision, verbose=False):

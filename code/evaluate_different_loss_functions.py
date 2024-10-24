@@ -9,7 +9,7 @@ import argparse
 import torch
 from torch.cuda.amp import GradScaler
 import optuna
-from utils.losses import ThresholdedMSELoss, WeightedMSELoss
+from utils.losses_pixelwise import *
 
 from models import *
 from utils import parse_args, save_args_to_json, plot_results
@@ -77,7 +77,7 @@ def plot_different_loss_functions(unet, loss_functions, dataset, savepath=None, 
             ax = plt.subplot(num_images, num_losses + 2, id_im * (num_losses + 2) + id_loss + 1)
             
             # Calculate the pixel-wise loss
-            loss = loss_func(pred.squeeze(), mask.squeeze(), pixel_wise=True)
+            loss = loss_func(pred.squeeze(), mask.squeeze())
             print("Shape of loss: ", loss.shape)
             
             # Display the loss as an image
@@ -150,7 +150,7 @@ if __name__=="__main__":
     folders = find_folders_with_unet_pth(base_directory)
     random.shuffle(folders)
 
-    loss_funcs = [PixelwiseL1Loss(), PixelwiseMSELoss(), CombiLoss(alpha=0.25), CombiLoss(alpha=0.5), CombiLoss(alpha=0.75), ThresholdedMSELoss(threshold=0.02, weight_ratio=0.1), WeightedMSELoss(epsilon=0.1), PixelwiseRMSELoss()]
+    loss_funcs = [PixelwiseL1Loss(), PixelwiseMSELoss(), CombiLoss(alpha=0.25), CombiLoss(alpha=0.5), CombiLoss(alpha=0.75), ThresholdedMAELoss(threshold=0.02, weight_ratio=0.1), WeightedMSELoss(epsilon=0.1), PixelwiseRMSELoss()]
 
     for folder in folders:
         print(rf"Evaluating folder: {folder}", flush=True)
