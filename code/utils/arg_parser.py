@@ -36,7 +36,7 @@ def parse_args():
                         help='Batch size used for testing and validation (default: 16).')
     parser.add_argument('--num-convs', type=int, default=2,
                         help='Number of convolutions in each block (default: 2).')
-    parser.add_argument('--val_loss', type=str, default="combi_RMSE_MAE")
+    parser.add_argument('--val_loss', type=str, default="combi_0_75")
     
     # Set the save path to include a timestamp
     parser.add_argument('--save_path', type=str, default=rf"./results/{current_time}",

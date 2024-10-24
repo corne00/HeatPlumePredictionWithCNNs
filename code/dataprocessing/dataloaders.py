@@ -28,6 +28,7 @@ class DatasetMultipleSubdomains(Dataset):
         self.data_augmentation = data_augmentation
         self.subdomains_dist = subdomains_dist
         self.patch_size = patch_size
+        self.half_precision : bool = True
 
     def __len__(self):
         return len(self.img_labels)
@@ -89,6 +90,10 @@ class DatasetMultipleSubdomains(Dataset):
             mask = self.target_transform(mask)
             
         images = self.__split_image(image)      
+
+        if self.half_precision:
+            images = [image.half() for image in images]
+            mask = mask.half()
 
 
         return images, mask

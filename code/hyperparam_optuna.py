@@ -7,7 +7,6 @@ import numpy as np
 import torch
 from torch.cuda.amp import GradScaler
 import optuna
-from line_profiler_decorator import profiler
 
 from models import *
 from utils import parse_args, save_args_to_json, plot_results
@@ -23,14 +22,6 @@ def evaluate(args, unet, losses, dataloaders, datasets):
     with open(os.path.join(args.save_path, 'losses.json'), 'w') as json_file:
         json.dump(losses, json_file)
 
-    # Call the function to compute average training loss and plot losses
-    avg_training_losses = average_training_losses(training_losses=losses["training_losses"], 
-                                                dataloader_train=dataloaders["train"], 
-                                                num_epochs=args.num_epochs)
-
-    plot_losses(avg_training_losses=avg_training_losses, val_losses=losses["val_losses"], save_path=args.save_path)
-
-@profiler
 def objective(trial):
     # Load and save the arguments from the arge parser
     args = parse_args()
@@ -70,10 +61,11 @@ def objective(trial):
         # Define loss function options
         loss_functions = {
             "mse": torch.nn.MSELoss(),
+            "combi_0_75": CombiLoss(0.75),
             "combi_0_5": CombiLoss(0.5),
             "combi_0_25": CombiLoss(0.25),
             "l1": torch.nn.L1Loss(),
-            "combi_RMSE_MAE": CombiRMSE_and_MAELoss(),
+            # "combi_RMSE_MAE": CombiRMSE_and_MAELoss(),
             "thresholded_mae_0_02": ThresholdedMAELoss(threshold=0.02, weight_ratio=0.1),
             "thresholded_mae_0_04": ThresholdedMAELoss(threshold=0.04, weight_ratio=0.1),
             "thresholded_mae_0_01": ThresholdedMAELoss(threshold=0.01, weight_ratio=0.1),

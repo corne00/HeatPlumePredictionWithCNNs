@@ -16,15 +16,14 @@ def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_
     with torch.no_grad():
         with (torch.autocast(device_type='cuda', dtype=data_type) if half_precision else contextlib.nullcontext()):
             for images, masks in tqdm(dataloader, disable=(not verbose)):
-                images = [im.half() for im in images]
-                masks = masks.to(device, dtype=torch.half)
 
+                masks = masks.to(device)
                 predictions = model(images)
                 loss = loss_fn(predictions, masks)
-                total_loss += loss.item()
+                total_loss += loss
                 num_batches += 1
         
-    average_loss = total_loss / num_batches
+    average_loss = total_loss.item() / num_batches
     return average_loss
 
 # Train function
@@ -43,7 +42,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
     unet = model(n_channels=num_channels, n_classes=1, input_shape=(640, 640), num_comm_fmaps=num_comm_fmaps, devices=devices, depth=depth,
                                    subdom_dist=subdomains_dist, bilinear=False, comm=comm, complexity=complexity, dropout_rate=dropout_rate, 
                                    kernel_size=kernel_size, padding=padding, communicator_type=None, comm_network_but_no_communication=(not exchange_fmaps), 
-                                   communication_network_def=communication_network, num_convs=num_convs)
+                                   communication_network_def=communication_network, num_convs=num_convs).half()
     
     unet.save_weights(save_path=os.path.join(save_path, "unet.pth"))
               
@@ -55,7 +54,6 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
     optimizer = torch.optim.Adam(parameters, lr=lr, weight_decay=weight_decay_adam)
     scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.5)
 
-    training_losses = []
     summary_losses = {}
 
     # Wrap your training loop with tqdm
@@ -73,10 +71,8 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
             optimizer.zero_grad()
             
             with (torch.autocast(device_type='cuda', dtype=data_type) if half_precision else contextlib.nullcontext()):
-            
-                # Data loading and sending to the correct device
-                images = ([im.half() for im in images] if half_precision else [im.float() for im in images])
-                masks = masks.to(devices[0], dtype=data_type)
+                
+                masks = masks.to(devices[0])
 
                 ## Forward propagation:
                 predictions = unet(images)
@@ -86,8 +82,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
                 
             scaler.scale(l).backward()
 
-            training_losses.append(l.item())  # Append loss to global losses list
-            epoch_losses += l.item()  # Append loss to epoch losses list
+            epoch_losses += l  # Add loss to epoch losses
 
             # Weight upgrade of the encoders
             with torch.no_grad():
@@ -125,8 +120,9 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
 
         val_loss = compute_validation_loss(unet, val_loss_func, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
         validation_losses.append(val_loss)
-        # print(f'Validation Loss: {val_loss:.4f}, Train Loss: {losses[-1]:.4f}')
-        epochs.set_postfix_str(f"train loss: {epoch_losses/len(dataloader_train):.2e}, val loss: {val_loss:.2e}, lr: {optimizer.param_groups[0]['lr']:.1e}")
+        epoch_losses = epoch_losses.item()
+        # print(f'Validation Loss: {val_loss:.4f}, Train Loss: {epoch_losses:.4f}')
+        epochs.set_postfix_str(f"train loss: {(epoch_losses)/len(dataloader_train):.2e}, val loss: {val_loss:.2e}, lr: {optimizer.param_groups[0]['lr']:.1e}")
         
         # Check for improvement and save best model
         if val_loss < best_val_loss:
@@ -161,7 +157,6 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         #     print(f"Maximum GPU Memory Used in Epoch {epoch+1}: {max_memory_used:.2f} GB")
         #     torch.cuda.reset_peak_memory_stats()
     summary_losses["val_losses"] = validation_losses
-    summary_losses["training_losses"] = training_losses
     print(f"Training the model {'with' if comm else 'without'} communication network took: {time.time() - start_time:.2f} seconds.", flush=True)
     
     # Load the best weights
