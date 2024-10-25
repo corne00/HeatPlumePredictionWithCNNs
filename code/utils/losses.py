@@ -1,5 +1,11 @@
 import torch
 import torch.nn as nn
+import numpy as np
+import yaml
+from copy import deepcopy
+
+from dataprocessing.equations_of_state import eos_water_density_IFC67, eos_water_enthalphy
+from dataprocessing.data_utils import NormalizeTransform
 
 class WeightedMSELoss(nn.Module):
     def __init__(self, epsilon:float=1e-1, only_target_based:bool=False):
@@ -101,6 +107,69 @@ class RMSELoss(nn.MSELoss):
     def forward(self, input, target):
         return torch.sqrt(super(RMSELoss, self).forward(input, target))
        
+
+class EnergyLoss(nn.Module):
+    def __init__(self, data_dir, dataloader):
+        super(EnergyLoss, self).__init__()
+        self.mse_loss = torch.nn.MSELoss()
+        self.norm_info = yaml.load(open(data_dir+"info.yaml"), Loader=yaml.SafeLoader)
+        assert "Liquid X-Velocity [m_per_y]" in self.norm_info["Inputs"], "Velocity-x not in Inputs"
+        self.norm = NormalizeTransform(self.norm_info)
+        inputs, _ = next(iter(dataloader))
+        inputs = torch.tensor(inputs)
+        print(len(inputs[0]), inputs[0].shape)
+        self.inputs_unnormed = self.norm.reverse(deepcopy(inputs[0]), "Inputs")
+        self.pressure = self.inputs_unnormed[self.norm_info["Inputs"]["Liquid Pressure [Pa]"]["index"]]
+        self.vx = self.inputs_unnormed[self.norm_info["Inputs"]["Liquid X-Velocity [m_per_y]"]["index"]]
+        self.vy = self.inputs_unnormed[self.norm_info["Inputs"]["Liquid X-Velocity [m_per_y]"]["index"]]
+        self.ids_normed = inputs[0][self.norm_info["Inputs"]["Material ID"]["index"]]
+
+    def forward(self, prediction, target):
+        # TODO target not needed
+        predicted_T_unnormed = self.norm.reverse(deepcopy(prediction), "Labels")
+        # TODO dimensions! expect 2D
+        print(predicted_T_unnormed.shape, self.vx.shape, self.ids_normed.shape)
+        loss = energy_loss(self.pressure, predicted_T_unnormed, self.vx, self.vy, self.ids_normed, self.mse_loss)
+        return loss
+
+def energy_loss(pressure, predicted_temperature, vx, vy, ids_normed, mse_loss):
+    #  based on : Manuel Hirche, Bachelor thesis, 2023
+    resolution = 5. #m
+
+    # cond_dry = 0.65
+    # cond_sat = 1.0
+    # sl  = 1 #? saturation of liquid?
+    thermal_conductivity = 1 #cond_dry + torch.sqrt(sl) * (cond_sat - cond_dry)
+    density, molar_density = eos_water_density_IFC67(predicted_temperature, pressure)
+    enthalpy = eos_water_enthalphy(predicted_temperature, pressure)
+    T_grad = torch.gradient(predicted_temperature)
+    energy_u = torch.gradient((molar_density * vx * enthalpy) - (thermal_conductivity * T_grad[0]/resolution))[0]/resolution
+    energy_v = torch.gradient((molar_density * vy * enthalpy) - (thermal_conductivity * T_grad[1]/resolution))[1]/resolution
+    energy = energy_u + energy_v
+
+    inflow_energy = energy_hps(ids_normed, resolution, density)
+    energy -= inflow_energy*0.5
+
+    energy_loss = mse_loss(torch.Tensor(energy), torch.zeros_like(torch.Tensor(energy)))
+    return energy_loss
+
+def energy_hps(ids, resolution, density):
+    specific_heat_water = 4200 # [J/kgK]
+    density_water = density # [kg/m^3]
+    temp_diff = 5 # [K]
+    volumetric_flow_rate = 0.00024 # [m^3/s]
+
+    hp_energy = specific_heat_water * density_water * temp_diff * volumetric_flow_rate * 1/resolution**3
+    hp_energy = hp_energy * ids
+
+    kernel = torch.tensor([[-1,0,1],
+                           [0,0,0],
+                           [1,0,-1]],dtype=torch.float32)
+    
+    hp_energy = torch.nn.functional.conv2d(hp_energy.unsqueeze(0).unsqueeze(0), kernel.unsqueeze(0).unsqueeze(0), padding=1)
+
+    return (hp_energy[0,0])
+
 if __name__ == "__main__":
     # Dummy data for prediction and target
     prediction = torch.tensor([1.0, 2.0, 3.0, 0.0, 0.0, 0.0])

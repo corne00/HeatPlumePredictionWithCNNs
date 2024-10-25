@@ -13,7 +13,7 @@ from utils import parse_args, save_args_to_json, plot_results
 from dataprocessing import init_data
 from utils.train_utils import *
 from utils.visualization import *
-from utils.losses import ThresholdedMAELoss, WeightedMAELoss, CombiRMSE_and_MAELoss, CombiLoss
+from utils.losses import ThresholdedMAELoss, WeightedMAELoss, CombiRMSE_and_MAELoss, CombiLoss, EnergyLoss
 
 def evaluate(args, unet, losses, dataloaders, datasets):
     plot_results(unet=unet, savepath=args.save_path, epoch_number="best", train_dataset=datasets["train"], val_dataset=datasets["val"])
@@ -46,9 +46,10 @@ def objective(trial):
     print("Available GPUs:", devices, flush=True)
 
     # Set datasets
-    image_dir = "/scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/Inputs"
-    mask_dir  = "/scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/Labels"
-    
+    # data_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/"
+    data_dir = "/scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/"
+    image_dir = data_dir+"Inputs"
+    mask_dir  = data_dir+"Labels"
     try:
         args.batch_size_training = trial.suggest_categorical("batch_size", [4, 8, 16, 32])
         dataloaders, datasets = init_data(args, image_dir, mask_dir)
@@ -73,6 +74,7 @@ def objective(trial):
             "weighted_mae_epsilon_0_1": WeightedMAELoss(epsilon=0.1),
             # "weighted_mae_epsilon_0_2": WeightedMAELoss(epsilon=0.2),
             # "weighted_mae_epsilon_0_05": WeightedMAELoss(epsilon=0.05),
+            "energy_mse": EnergyLoss(data_dir=data_dir, dataloader=dataloaders["val"])
         }
 
         track_loss_functions = {
@@ -117,13 +119,16 @@ def objective(trial):
 
 
 if __name__ == "__main__":
-    print("Running", flush=True)
-    STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/pki_5000_testi2"
+    print("Running")
+    
+    # STUDY_DIR = "/scratch/e451412/code/results/pki_5000_loss_functions"
+    STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/test_tensorboard"
+
     study_dir = pathlib.Path(STUDY_DIR)
     study_dir.mkdir(parents=True, exist_ok=True)
 
     study = optuna.create_study(direction="minimize", storage=f"sqlite:///{STUDY_DIR}/hyperparam_opti.db", study_name="search", load_if_exists=True)
-    study.optimize(objective, n_trials=7)
+    study.optimize(objective, n_trials=2)
 
     pruned_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.PRUNED])
     complete_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.COMPLETE])
