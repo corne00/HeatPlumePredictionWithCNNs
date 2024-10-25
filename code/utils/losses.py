@@ -35,7 +35,7 @@ class WeightedMAELoss(nn.Module):
         self.epsilon = epsilon
         self.only_target_based = only_target_based
         self.name = rf"WeightedMSELoss (e={self.epsilon})"
-        self.mae = nn.L1Loss()
+        self.mae = nn.L1Loss(reduction="none")
     
     def forward(self, prediction, target):
         # Calculate the element-wise maximum between prediction and target
@@ -45,8 +45,8 @@ class WeightedMAELoss(nn.Module):
             weight = torch.max(prediction, target) + self.epsilon
         
         # Return the weighted mean absolute error
-        return weight * self.mae(prediction, target)
-
+        return torch.mean(weight * self.mae(prediction, target))
+    
 class ThresholdedMAELoss(nn.Module):
     """
     Function that puts more weight on pixels close to the stream lines.
@@ -115,6 +115,11 @@ if __name__ == "__main__":
     wmse_loss = WeightedMSELoss(epsilon=1e-1)
     loss_wmse = wmse_loss(prediction, target)
     print(f"WeightedMSE Loss (mean): {loss_wmse.item()}")
+
+    # --- WeightedMAELoss ---
+    wmae_loss = WeightedMAELoss(epsilon=1e-1)
+    loss_wmae = wmae_loss(prediction, target)
+    print(f"WeightedMAE Loss (mean): {loss_wmae.item()}")
     
     # --- ThresholdedMSELoss ---
     thresholded_mse_loss = ThresholdedMAELoss(threshold=0.02, weight_ratio=0.1)
