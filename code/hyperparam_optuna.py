@@ -42,7 +42,7 @@ def objective(trial):
 
     # Set devices
     devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())] or ["cpu"]
-    # devices = ["cuda:1"]
+    devices = ["cuda:3"]
     print("Available GPUs:", devices, flush=True)
 
     # Set datasets
@@ -118,7 +118,7 @@ def objective(trial):
 
 if __name__ == "__main__":
     print("Running", flush=True)
-    STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/pki_5000_faster"
+    STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/pki_5000_testi2"
     study_dir = pathlib.Path(STUDY_DIR)
     study_dir.mkdir(parents=True, exist_ok=True)
 
