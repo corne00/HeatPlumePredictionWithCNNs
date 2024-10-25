@@ -42,7 +42,7 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
     unet = model(n_channels=num_channels, n_classes=1, input_shape=(640, 640), num_comm_fmaps=num_comm_fmaps, devices=devices, depth=depth,
                                    subdom_dist=subdomains_dist, bilinear=False, comm=comm, complexity=complexity, dropout_rate=dropout_rate, 
                                    kernel_size=kernel_size, padding=padding, communicator_type=None, comm_network_but_no_communication=(not exchange_fmaps), 
-                                   communication_network_def=communication_network, num_convs=num_convs).half()
+                                   communication_network_def=communication_network, num_convs=num_convs)
     
     unet.save_weights(save_path=os.path.join(save_path, "unet.pth"))
               
@@ -81,7 +81,6 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
                 l = loss_func(predictions, masks)
                 
             scaler.scale(l).backward()
-
             epoch_losses += l  # Add loss to epoch losses
 
             # Weight upgrade of the encoders

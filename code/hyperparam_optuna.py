@@ -42,19 +42,19 @@ def objective(trial):
 
     # Set devices
     devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())] or ["cpu"]
-    devices = ["cuda:3"]
+    # devices = ["cuda:1"]
     print("Available GPUs:", devices, flush=True)
 
     # Set datasets
-    image_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/Inputs"
-    mask_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/Labels"
+    image_dir = "/scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/Inputs"
+    mask_dir  = "/scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/Labels"
     
     try:
-        args.batch_size_training = trial.suggest_categorical("batch_size", [2, 4, 8, 16, 32])
+        args.batch_size_training = trial.suggest_categorical("batch_size", [4, 8, 16, 32])
         dataloaders, datasets = init_data(args, image_dir, mask_dir)
 
         # Generate the model
-        args.depth = trial.suggest_categorical("depth", [4,5,6])
+        args.depth = 6 #trial.suggest_categorical("depth", [4,5,6])
         args.complexity = trial.suggest_categorical("complexity", [4, 8, 16, 32, 64])
         args.kernel_size = trial.suggest_categorical("kernel_size", [3, 5, 7])
         args.num_convs = trial.suggest_categorical("num_convs", [2, 3])
@@ -78,11 +78,10 @@ def objective(trial):
         track_loss_functions = {
             "mse": torch.nn.MSELoss(),
             "l1": torch.nn.L1Loss(),
-            # "combi_RMSE_MAE": CombiRMSE_and_MAELoss(),
         }
 
         # Generate the optimizers
-        args.lr = trial.suggest_categorical("lr", [1e-3, 2e-4, 1e-4, 5e-5, 1e-5])
+        args.lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True) #suggest_categorical("lr", [1e-3, 2e-4, 1e-4, 5e-5, 1e-5])
         args.weight_decay_adam = 0 #trial.suggest_categorical("weight_decay", [0])
 
         # Select the loss function based on the trial's suggestion
@@ -102,7 +101,7 @@ def objective(trial):
                                                                     complexity=args.complexity, dropout_rate=0.0, devices=devices, 
                                                                     num_convs=args.num_convs, weight_decay_adam=args.weight_decay_adam, lr=args.lr,
                                                                     loss_func=loss_function, val_loss_func=loss_functions[args.val_loss], verbose=False,
-                                                                    num_channels=3, plot_freq=2, track_loss_functions=track_loss_functions)
+                                                                    num_channels=3, plot_freq=10, track_loss_functions=track_loss_functions)
         
         loss = np.min(data["val_losses"])
 
@@ -119,12 +118,12 @@ def objective(trial):
 
 if __name__ == "__main__":
     print("Running", flush=True)
-    STUDY_DIR = "/scratch/e451412/code/results/pki_5000_2024_10_23"
+    STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/pki_5000_faster"
     study_dir = pathlib.Path(STUDY_DIR)
     study_dir.mkdir(parents=True, exist_ok=True)
 
     study = optuna.create_study(direction="minimize", storage=f"sqlite:///{STUDY_DIR}/hyperparam_opti.db", study_name="search", load_if_exists=True)
-    study.optimize(objective, n_trials=100)
+    study.optimize(objective, n_trials=7)
 
     pruned_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.PRUNED])
     complete_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.COMPLETE])

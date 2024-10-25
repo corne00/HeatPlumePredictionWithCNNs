@@ -16,7 +16,7 @@ def plot_results(unet, savepath, epoch_number, train_dataset, val_dataset):
     def process_and_plot(images, masks, start_pos, title='', colorbar=True):
         unet.eval()
         with torch.no_grad():
-            predictions = unet([img.unsqueeze(0) for img in images]).cpu()
+            predictions = unet([img.float().unsqueeze(0) for img in images]).cpu()
             full_images = unet.concatenate_tensors([img.unsqueeze(0) for img in images]).squeeze().cpu()
 
         for i in range(3):
