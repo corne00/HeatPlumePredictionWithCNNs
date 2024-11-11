@@ -15,7 +15,7 @@ from utils.train_utils import *
 from utils.visualization import *
 from utils.losses import ThresholdedMAELoss, WeightedMAELoss, CombiRMSE_and_MAELoss, CombiLoss, EnergyLoss
 
-def evaluate(args, unet, losses, dataloaders, datasets):
+def evaluate(args, unet, losses, datasets):
     plot_results(unet=unet, savepath=args.save_path, epoch_number="best", train_dataset=datasets["train"], val_dataset=datasets["val"])
     
     # Save to a JSON file
@@ -49,10 +49,11 @@ def objective(trial):
     # data_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/"
     data_dir = "/scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/"
     image_dir = data_dir+"Inputs"
-    mask_dir  = data_dir+"Labels"
+    label_dir  = data_dir+"Labels"
+    num_channels = 5
     try:
         args.batch_size_training = trial.suggest_categorical("batch_size", [4, 8, 16, 32])
-        dataloaders, datasets = init_data(args, image_dir, mask_dir)
+        dataloaders, datasets = init_data(args, image_dir, label_dir)
 
         # Generate the model
         args.depth = 6 #trial.suggest_categorical("depth", [4,5,6])
@@ -74,7 +75,7 @@ def objective(trial):
             "weighted_mae_epsilon_0_1": WeightedMAELoss(epsilon=0.1),
             # "weighted_mae_epsilon_0_2": WeightedMAELoss(epsilon=0.2),
             # "weighted_mae_epsilon_0_05": WeightedMAELoss(epsilon=0.05),
-            "energy_mse": EnergyLoss(data_dir=data_dir, dataloader=dataloaders["val"])
+            # "energy_mse": EnergyLoss(data_dir=data_dir, dataset=dataloaders["val"])
         }
 
         track_loss_functions = {
@@ -103,12 +104,12 @@ def objective(trial):
                                                                     complexity=args.complexity, dropout_rate=0.0, devices=devices, 
                                                                     num_convs=args.num_convs, weight_decay_adam=args.weight_decay_adam, lr=args.lr,
                                                                     loss_func=loss_function, val_loss_func=loss_functions[args.val_loss], verbose=False,
-                                                                    num_channels=3, plot_freq=10, track_loss_functions=track_loss_functions)
+                                                                    num_channels=num_channels, plot_freq=10, track_loss_functions=track_loss_functions)
         
         loss = np.min(data["val_losses"])
 
         # Save and calculate losses
-        evaluate(args, unet, data, dataloaders, datasets)
+        evaluate(args, unet, data, datasets)
         
     except Exception as e:
         print(f"Training failed with exception: {e}", flush=True)
