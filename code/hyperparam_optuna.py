@@ -15,6 +15,8 @@ from utils.train_utils import *
 from utils.visualization import *
 from utils.losses import ThresholdedMAELoss, WeightedMAELoss, CombiRMSE_and_MAELoss, CombiLoss, EnergyLoss
 
+STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/unittesting"
+
 def evaluate(args, unet, losses, datasets):
     plot_results(unet=unet, savepath=args.save_path, epoch_number="best", train_dataset=datasets["train"], val_dataset=datasets["val"])
     
