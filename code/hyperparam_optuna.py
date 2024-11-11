@@ -113,7 +113,7 @@ def objective(trial):
         
     except Exception as e:
         print(f"Training failed with exception: {e}", flush=True)
-        loss = 1
+        raise optuna.TrialPruned()
     
     print("Finished!", flush=True)
     return loss
