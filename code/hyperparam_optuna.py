@@ -144,3 +144,11 @@ if __name__ == "__main__":
     print("  Params: ")
     for key, value in study.best_trial.params.items():
         print("    {}: {}".format(key, value))
+
+    print("Complete trials:")
+    for trial in complete_trials:
+        print("  Trial {}: {}".format(trial.number, trial.value))
+
+    print("Pruned trials:")
+    for trial in pruned_trials:
+        print("  Trial {}: {}".format(trial.number, trial.value))
