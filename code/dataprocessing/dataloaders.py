@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 
 class DatasetMultipleSubdomains(Dataset):
     def __init__(self, image_labels, image_dir, mask_dir, transform=None, target_transform=None, 
-                 data_augmentation=None, patch_size = 640, subdomains_dist=(1,1)):
+                 data_augmentation=None, patch_size = 640, subdomains_dist=(1,1), crop_size=(None, None)):
         """
         Args:
         - image_labels (list): list of file names of the labels (ground truth and inputs) that should be included in the dataset
@@ -29,6 +29,7 @@ class DatasetMultipleSubdomains(Dataset):
         self.subdomains_dist = subdomains_dist
         self.patch_size = patch_size
         self.half_precision : bool = True
+        self.crop_size = crop_size
 
     def __len__(self):
         return len(self.img_labels)
@@ -67,6 +68,16 @@ class DatasetMultipleSubdomains(Dataset):
 
         return image_patch, mask_patch
 
+    def __center_crop(self, mask, target_height, target_width):
+        """
+        Crops the center of the mask to the specified (target_height, target_width).
+        """
+        _, h, w = mask.shape
+        start_x = (w - target_width) // 2
+        start_y = (h - target_height) // 2
+
+        return mask[:, start_y:start_y + target_height, start_x:start_x + target_width]
+
     def __getitem__(self, idx):
         img_name = self.img_labels[idx]
         
@@ -85,15 +96,18 @@ class DatasetMultipleSubdomains(Dataset):
 
         if self.transform:
             image = self.transform(image)
-
         if self.target_transform:
             mask = self.target_transform(mask)
+
+        # Center crop the mask to the specified padding size if padding is defined
+        if self.crop_size[0] is not None and self.crop_size[1] is not None:
+            mask = self.__center_crop(mask, self.crop_size[0], self.crop_size[1])
+
             
         images = self.__split_image(image)      
 
         if self.half_precision:
             images = [image.half() for image in images]
             mask = mask.half()
-
 
         return images, mask

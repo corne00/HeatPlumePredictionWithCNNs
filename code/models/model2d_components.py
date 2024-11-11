@@ -11,47 +11,48 @@ class OutConv(nn.Module):
         return self.conv(x)
 
 class DoubleConv(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels=None, dropout_rate=0.1, kernel_size=5, num_convs=2, padding=None):
+    def __init__(self, in_channels, out_channels, mid_channels=None, dropout_rate=0.1, 
+                 kernel_size=5, num_convs=2, padding=None, depthwise_conv=False):
         super().__init__()
         if not mid_channels:
             mid_channels = out_channels
         self.kernel_size = kernel_size
+        self.depthwise_conv = depthwise_conv
+        
         if padding is None:
             self.padding = kernel_size // 2
         else:
             self.padding = padding
 
-        # self.double_conv = nn.Sequential(
-        #     nn.Conv2d(in_channels, mid_channels, kernel_size=self.kernel_size, padding=self.padding, bias=False),
-        #     nn.BatchNorm2d(mid_channels),
-        #     nn.ReLU(inplace=True),
-        #     nn.Dropout2d(p=dropout_rate),
-        #     nn.Conv2d(mid_channels, out_channels, kernel_size=self.kernel_size, padding=self.padding, bias=False),
-        #     nn.BatchNorm2d(out_channels),
-        #     nn.ReLU(inplace=True),
-        #     nn.Dropout2d(p=dropout_rate)
-        # )
-
         layers = []
-        
-        # First layer from in_channels to mid_channels
-        layers.append(nn.Conv2d(in_channels, mid_channels, kernel_size=kernel_size, padding=self.padding, bias=False))
-        layers.append(nn.BatchNorm2d(mid_channels))
+
+        # First layer from in_channels to mid_channels (or directly to out_channels if num_convs=1)
+        if depthwise_conv:
+            layers.append(nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, padding=padding, bias=False, groups=in_channels))                # Apply depthwise convolution
+            layers.append(nn.Conv2d(in_channels, mid_channels if num_convs > 1 else out_channels, kernel_size=1, bias=False))                           # 1x1 pointwise convolution to combine features across channels
+        else:
+            layers.append(nn.Conv2d(in_channels, mid_channels if num_convs > 1 else out_channels, kernel_size=kernel_size, padding=padding, bias=False))    # Standard convolution
+        layers.append(nn.BatchNorm2d(mid_channels if num_convs > 1 else out_channels))
         layers.append(nn.ReLU(inplace=True))
         layers.append(nn.Dropout2d(p=dropout_rate))
-        
-        # Create 'num_convs' mid conv blocks from mid_channels to mid_channels
-        for _ in range(num_convs-2):
-            layers.append(nn.Conv2d(mid_channels, mid_channels, kernel_size=kernel_size, padding=self.padding, bias=False))
+
+        # Mid layers from mid_channels to mid_channels (only if num_convs > 2)
+        for _ in range(num_convs - 2):
+            layers.append(nn.Conv2d(mid_channels, mid_channels, kernel_size=kernel_size, padding=padding, bias=False, groups=(mid_channels if depthwise_conv else 1)))
+            if depthwise_conv: 
+                layers.append(nn.Conv2d(mid_channels, mid_channels, kernel_size=1, padding=0, bias=False))
             layers.append(nn.BatchNorm2d(mid_channels))
             layers.append(nn.ReLU(inplace=True))
             layers.append(nn.Dropout2d(p=dropout_rate))
 
-        # Last layer from mid_channels to out_channels
-        layers.append(nn.Conv2d(mid_channels, out_channels, kernel_size=kernel_size, padding=self.padding, bias=False))
-        layers.append(nn.BatchNorm2d(out_channels))
-        layers.append(nn.ReLU(inplace=True))
-        layers.append(nn.Dropout2d(p=dropout_rate))
+        # Last layer from mid_channels to out_channels (only if num_convs > 1)
+        if num_convs > 1:
+            layers.append(nn.Conv2d(mid_channels, out_channels, kernel_size=kernel_size, padding=padding, bias=False, groups=(mid_channels if depthwise_conv else 1)))
+            if depthwise_conv:
+                layers.append(nn.Conv2d(mid_channels, out_channels, kernel_size=1, bias=False))
+            layers.append(nn.BatchNorm2d(out_channels))
+            layers.append(nn.ReLU(inplace=True))
+            layers.append(nn.Dropout2d(p=dropout_rate))
 
         self.double_conv = nn.Sequential(*layers)
     
@@ -59,39 +60,71 @@ class DoubleConv(nn.Module):
         return self.double_conv(x)
 
 class Down(nn.Module):
-    def __init__(self, in_channels, out_channels, dropout_rate=0.1, num_convs=2, kernel_size=3, padding=None):
+    def __init__(self, in_channels, out_channels, dropout_rate=0.1, num_convs=2, kernel_size=3, padding=None, depthwise_conv: bool = False):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
             nn.MaxPool2d(2),
-            DoubleConv(in_channels, out_channels, dropout_rate=dropout_rate, num_convs=num_convs, kernel_size=kernel_size, padding=padding)
+            DoubleConv(in_channels, out_channels, dropout_rate=dropout_rate, num_convs=num_convs, kernel_size=kernel_size, padding=padding, depthwise_conv=depthwise_conv)
         )
 
     def forward(self, x):
         return self.maxpool_conv(x)
 
 class Up(nn.Module):
-    def __init__(self, in_channels, out_channels, bilinear=True, dropout_rate=0.1, num_convs=2, kernel_size=3, padding=None):
+    def __init__(self, in_channels, out_channels, bilinear=True, dropout_rate=0.1, 
+                 num_convs=2, kernel_size=3, padding=None, depthwise_conv: bool = False):
         super().__init__()
 
         # if bilinear, use the normal convolutions to reduce the number of channels
         if bilinear:
             self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-            self.conv = DoubleConv(in_channels, out_channels, in_channels // 2, dropout_rate=dropout_rate, num_convs=num_convs, kernel_size=kernel_size, padding=padding)
+            self.conv = DoubleConv(in_channels, out_channels, in_channels // 2, dropout_rate=dropout_rate, 
+                                   num_convs=num_convs, kernel_size=kernel_size, padding=padding, depthwise_conv = depthwise_conv)
         else:
             self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
-            self.conv = DoubleConv(in_channels, out_channels, dropout_rate=dropout_rate, num_convs=num_convs, kernel_size=kernel_size, padding=padding)
+            self.conv = DoubleConv(in_channels, out_channels, dropout_rate=dropout_rate, 
+                                   num_convs=num_convs, kernel_size=kernel_size, padding=padding, depthwise_conv = depthwise_conv)
 
     def forward(self, x1, x2):
+        # Upsample x1 first
+        # print("Shape of up block input before upsampling :", x1.shape)
+
         x1 = self.up(x1)
-        # input is CHW
-        diffY = x2.size()[2] - x1.size()[2]
-        diffX = x2.size()[3] - x1.size()[3]
+        
+        # print("Shape of up block input :", x1.shape, x2.shape)
 
-        x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2,
-                        diffY // 2, diffY - diffY // 2])
-
+        # Determine minimum height and width
+        min_height = min(x1.size(2), x2.size(2))
+        min_width = min(x1.size(3), x2.size(3))
+        
+        # Crop the center regions of x1 and x2 to match min_height and min_width
+        # Note: if (proper) padding is used, this won't change anything
+        x1 = x1[:, :, (x1.size(2) - min_height) // 2 : (x1.size(2) + min_height) // 2,
+                    (x1.size(3) - min_width) // 2 : (x1.size(3) + min_width) // 2]
+        x2 = x2[:, :, (x2.size(2) - min_height) // 2 : (x2.size(2) + min_height) // 2,
+                    (x2.size(3) - min_width) // 2 : (x2.size(3) + min_width) // 2]
+        
+        # Concatenate along the channel dimension
         x = torch.cat([x2, x1], dim=1)
+
+        # print("Shape of up block output:", x.shape)
+        
+        # Pass through the convolutional layer
         return self.conv(x)
+
+
+    # def forward(self, x1, x2):
+    #     x1 = self.up(x1)
+    #     # input is CHW
+    #     diffY = x2.size()[2] - x1.size()[2]
+    #     diffX = x2.size()[3] - x1.size()[3]
+
+    #     x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2,
+    #                     diffY // 2, diffY - diffY // 2])
+
+    #     x = torch.cat([x2, x1], dim=1)
+    #     print("Decoder pass:", x.shape)
+    #     return self.conv(x)
 
 class CNNCommunicator(nn.Module):
     def __init__(self, in_channels, out_channels, dropout_rate=0.1, kernel_size=3, padding=1):

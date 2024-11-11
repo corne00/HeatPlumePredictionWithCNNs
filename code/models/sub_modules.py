@@ -3,7 +3,8 @@ from .model2d_components import DoubleConv, Down, Up, OutConv
 
 class Encoder(nn.Module):
     """Encoder module for a U-Net architecture."""
-    def __init__(self, n_channels=3, depth=4, complexity=32, dropout_rate=0.0, kernel_size=3, num_convs=2, padding=None):
+    def __init__(self, n_channels=3, depth=4, complexity=32, dropout_rate=0.0, kernel_size=3, 
+                 num_convs=2, padding=None, depthwise_conv=False):
         """
         Initializes the Encoder module.
 
@@ -16,12 +17,15 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         
         channels = [complexity * 2 ** i for i in range(depth + 1)]
-        self.inc = DoubleConv(n_channels, complexity, dropout_rate=dropout_rate, kernel_size=kernel_size, num_convs=num_convs, padding=padding)
+        self.inc = DoubleConv(n_channels, complexity, dropout_rate=dropout_rate, kernel_size=kernel_size,
+                              num_convs=num_convs, padding=padding, depthwise_conv=depthwise_conv)
         self.contraction = nn.ModuleList()
         self.padding = padding
         
         for i in range(depth):
-            self.contraction.append(Down(channels[i], channels[i + 1], dropout_rate=dropout_rate, kernel_size=kernel_size, num_convs=num_convs, padding=padding))
+            self.contraction.append(Down(channels[i], channels[i + 1], 
+                                         dropout_rate=dropout_rate, kernel_size=kernel_size, 
+                                         num_convs=num_convs, padding=padding, depthwise_conv=depthwise_conv))
         
     def forward(self, x):
         """
@@ -37,7 +41,8 @@ class Encoder(nn.Module):
     
 class Decoder(nn.Module):
     """Decoder module for a U-Net architecture."""
-    def __init__(self, n_channels=3, depth=4, n_classes=3, complexity=32, dropout_rate=0.0, kernel_size=3, num_convs=2, padding=None):
+    def __init__(self, n_channels=3, depth=4, n_classes=3, complexity=32, dropout_rate=0.0, 
+                 kernel_size=3, num_convs=2, padding=None, depthwise_conv: bool = False):
         """
         Initializes the Decoder module.
 
@@ -53,9 +58,12 @@ class Decoder(nn.Module):
         channels = [complexity * 2 ** i for i in range(depth + 1)]
         self.expansion = nn.ModuleList()
         self.padding = padding
+        self.depthwoise_conv = depthwise_conv 
         
         for i in range(depth):
-            self.expansion.append(Up(channels[-1 - i], channels[-2 - i], bilinear=False, dropout_rate=dropout_rate, kernel_size=kernel_size, num_convs=num_convs, padding=padding))
+            self.expansion.append(Up(channels[-1 - i], channels[-2 - i], bilinear=False, 
+                                     dropout_rate=dropout_rate, kernel_size=kernel_size, 
+                                     num_convs=num_convs, padding=padding, depthwise_conv=depthwise_conv))
         
         self.outc = OutConv(complexity, n_classes)  
 
@@ -65,7 +73,7 @@ class Decoder(nn.Module):
             x2 = layer(x2, outputs[-1 - i - 1])
         y = self.outc(x2)
         return y
-    
+
 class CNNCommunicator(nn.Module):
     """CNN Communicator module."""
     def __init__(self, in_channels, out_channels, dropout_rate=0.0, kernel_size=5, padding=2):
