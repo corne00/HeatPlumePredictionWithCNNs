@@ -34,7 +34,7 @@ def parse_args():
                         help='Batch size used for training (default: 16).')
     parser.add_argument('--batch_size_testing', type=int, default=16,
                         help='Batch size used for testing and validation (default: 16).')
-    parser.add_argument('--num-convs', type=int, default=2,
+    parser.add_argument('--num_convs', type=int, default=2,
                         help='Number of convolutions in each block (default: 2).')
     parser.add_argument('--val_loss', type=str, default="combi_0_75")
     
