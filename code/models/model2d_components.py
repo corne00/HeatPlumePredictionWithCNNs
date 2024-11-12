@@ -28,17 +28,17 @@ class DoubleConv(nn.Module):
 
         # First layer from in_channels to mid_channels (or directly to out_channels if num_convs=1)
         if depthwise_conv:
-            layers.append(nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, padding=padding, bias=False, groups=in_channels))                # Apply depthwise convolution
+            layers.append(nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, padding=self.padding, bias=False, groups=in_channels))                # Apply depthwise convolution
             layers.append(nn.Conv2d(in_channels, mid_channels if num_convs > 1 else out_channels, kernel_size=1, bias=False))                           # 1x1 pointwise convolution to combine features across channels
         else:
-            layers.append(nn.Conv2d(in_channels, mid_channels if num_convs > 1 else out_channels, kernel_size=kernel_size, padding=padding, bias=False))    # Standard convolution
+            layers.append(nn.Conv2d(in_channels, mid_channels if num_convs > 1 else out_channels, kernel_size=kernel_size, padding=self.padding, bias=False))    # Standard convolution
         layers.append(nn.BatchNorm2d(mid_channels if num_convs > 1 else out_channels))
         layers.append(nn.ReLU(inplace=True))
         layers.append(nn.Dropout2d(p=dropout_rate))
 
         # Mid layers from mid_channels to mid_channels (only if num_convs > 2)
         for _ in range(num_convs - 2):
-            layers.append(nn.Conv2d(mid_channels, mid_channels, kernel_size=kernel_size, padding=padding, bias=False, groups=(mid_channels if depthwise_conv else 1)))
+            layers.append(nn.Conv2d(mid_channels, mid_channels, kernel_size=kernel_size, padding=self.padding, bias=False, groups=(mid_channels if depthwise_conv else 1)))
             if depthwise_conv: 
                 layers.append(nn.Conv2d(mid_channels, mid_channels, kernel_size=1, padding=0, bias=False))
             layers.append(nn.BatchNorm2d(mid_channels))
@@ -47,7 +47,7 @@ class DoubleConv(nn.Module):
 
         # Last layer from mid_channels to out_channels (only if num_convs > 1)
         if num_convs > 1:
-            layers.append(nn.Conv2d(mid_channels, out_channels, kernel_size=kernel_size, padding=padding, bias=False, groups=(mid_channels if depthwise_conv else 1)))
+            layers.append(nn.Conv2d(mid_channels, out_channels, kernel_size=kernel_size, padding=self.padding, bias=False, groups=(mid_channels if depthwise_conv else 1)))
             if depthwise_conv:
                 layers.append(nn.Conv2d(mid_channels, out_channels, kernel_size=1, bias=False))
             layers.append(nn.BatchNorm2d(out_channels))
