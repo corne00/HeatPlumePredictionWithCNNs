@@ -7,17 +7,21 @@ import numpy as np
 import torch
 from torch.cuda.amp import GradScaler
 import optuna
+from argparse import Namespace
+from typing import Dict
 
 from models import *
-from utils import parse_args, save_args_to_json, plot_results
+from utils.arg_parser import parse_args, save_args_to_json
+from utils.visualization import plot_results
 from dataprocessing import init_data
 from utils.train_utils import *
 from utils.visualization import *
 from utils.losses import ThresholdedMAELoss, WeightedMAELoss, CombiRMSE_and_MAELoss, CombiLoss, EnergyLoss
+from dataprocessing.dataloaders import DatasetMultipleSubdomains
 
 STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/unittesting"
 
-def evaluate(args, unet, losses, datasets):
+def evaluate(args:Namespace, unet:MultiGPU_UNet_with_comm, losses:Dict[str,list], datasets:Dict[str,DatasetMultipleSubdomains]):
     plot_results(unet=unet, savepath=args.save_path, epoch_number="best", train_dataset=datasets["train"], val_dataset=datasets["val"])
     
     # Save to a JSON file
@@ -44,7 +48,7 @@ def objective(trial):
 
     # Set devices
     devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())] or ["cpu"]
-    devices = ["cuda:1"]
+    devices = ["cuda:2"]
     print("Available GPUs:", devices, flush=True)
 
     # Set datasets
