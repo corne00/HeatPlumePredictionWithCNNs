@@ -53,10 +53,10 @@ def objective(trial):
 
     # Set datasets
     # data_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/"
-    data_dir = "/scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/"
+    data_dir = "/scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/"
     image_dir = data_dir+"Inputs"
     label_dir  = data_dir+"Labels"
-    num_channels = 3
+    num_channels = 5
     try:
         args.batch_size_training = trial.suggest_categorical("batch_size", [2, 4, 8, 16])
         dataloaders, datasets = init_data(args, image_dir, label_dir)
@@ -81,12 +81,13 @@ def objective(trial):
             "weighted_mae_epsilon_0_1": WeightedMAELoss(epsilon=0.1),
             # "weighted_mae_epsilon_0_2": WeightedMAELoss(epsilon=0.2),
             # "weighted_mae_epsilon_0_05": WeightedMAELoss(epsilon=0.05),
-            # "energy_mse": EnergyLoss(data_dir=data_dir, dataset=dataloaders["val"])
+            "energy_mse": EnergyLoss(data_dir=data_dir, device=devices[0]),
         }
 
         track_loss_functions = {
             "mse": torch.nn.MSELoss(),
             "l1": torch.nn.L1Loss(),
+            "energy":EnergyLoss(data_dir=data_dir, device=devices[0]),
         }
 
         # Generate the optimizers
@@ -109,7 +110,8 @@ def objective(trial):
                                                                     depth=args.depth, kernel_size=args.kernel_size, communication_network=None, 
                                                                     complexity=args.complexity, dropout_rate=0.0, devices=devices, 
                                                                     num_convs=args.num_convs, weight_decay_adam=args.weight_decay_adam, lr=args.lr,
-                                                                    loss_func=loss_function, val_loss_func=loss_functions[args.val_loss], verbose=False,
+                                                                    loss_func=loss_function, val_loss_func=loss_functions[args.val_loss],
+                                                                    verbose=False,
                                                                     num_channels=num_channels, plot_freq=10, track_loss_functions=track_loss_functions)
         
         loss = np.min(data["val_losses"])
@@ -124,35 +126,97 @@ def objective(trial):
     print("Finished!", flush=True)
     return loss
 
+def run():
+    # Load and save the arguments from the arge parser
+    args = parse_args()
+    args.save_path = STUDY_DIR + "/testing"
+    pathlib.Path(args.save_path).mkdir(parents=True, exist_ok=True)
+
+    args.weight_decay_adam = 1e-4
+    args.lr = 1e-4
+
+    # Check if we have half precision
+    half_precision = torch.cuda.is_available()
+    data_type = torch.float16 if half_precision else torch.float32
+
+    # Half precision scaler
+    scaler = GradScaler(enabled=half_precision)
+
+    # Set devices
+    devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())] or ["cpu"]
+    devices = ["cuda:3"]
+    print("Available GPUs:", devices, flush=True)
+
+    # Set datasets
+    # data_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/"
+    data_dir = "/scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/"
+    image_dir = data_dir+"Inputs"
+    label_dir  = data_dir+"Labels"
+    num_channels = 5
+    dataloaders, datasets = init_data(args, image_dir, label_dir)
+
+    # Define loss function options
+    loss_function = CombiLoss(0.75) #EnergyLoss(data_dir=data_dir, device=devices[0]) #
+    
+    track_loss_functions = {
+        "mse": torch.nn.MSELoss(),
+        "l1": torch.nn.L1Loss(),
+        "energy":EnergyLoss(data_dir=data_dir, device=devices[0]),
+    }
+
+    save_args_to_json(args=args, filename=os.path.join(args.save_path, "args.json"))
+
+    unet, data = train_parallel_model(model=MultiGPU_UNet_with_comm, dataloader_val=dataloaders["val"], 
+                                                                dataloader_train=dataloaders["train"], scaler=scaler, data_type=data_type, 
+                                                                half_precision=True, train_dataset=datasets["train"], val_dataset=datasets["val"], 
+                                                                comm=args.comm, num_epochs=args.num_epochs, num_comm_fmaps=args.num_comm_fmaps,  
+                                                                save_path=args.save_path, subdomains_dist=args.subdomains_dist, 
+                                                                exchange_fmaps=args.exchange_fmaps, padding=args.padding, 
+                                                                depth=args.depth, kernel_size=args.kernel_size, communication_network=None, 
+                                                                complexity=args.complexity, dropout_rate=0.0, devices=devices, 
+                                                                num_convs=args.num_convs, weight_decay_adam=args.weight_decay_adam, lr=args.lr,
+                                                                loss_func=loss_function, val_loss_func=CombiLoss(0.75), #loss_functions[args.val_loss], 
+                                                                verbose=False,
+                                                                num_channels=num_channels, plot_freq=10, track_loss_functions=track_loss_functions)
+    
+    # Save and calculate losses
+    evaluate(args, unet, data, datasets)
+        
+    print("Finished!", flush=True)
 
 if __name__ == "__main__":
-    print("Running")
+    hyperparam_search = False
+    print(f"Running {'hyperparameter search' if hyperparam_search else 'single run'}", flush=True)
     
     # STUDY_DIR = "/scratch/e451412/code/results/pki_5000_loss_functions"
-    STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/pki_5000_exhaustive_search"
+    STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/test_energy_loss"
 
     study_dir = pathlib.Path(STUDY_DIR)
     study_dir.mkdir(parents=True, exist_ok=True)
 
-    study = optuna.create_study(direction="minimize", storage=f"sqlite:///{STUDY_DIR}/hyperparam_opti.db", study_name="search", load_if_exists=True)
-    study.optimize(objective, n_trials=10)
+    if hyperparam_search:
+        study = optuna.create_study(direction="minimize", storage=f"sqlite:///{STUDY_DIR}/hyperparam_opti.db", study_name="search", load_if_exists=True)
+        study.optimize(objective, n_trials=1)
 
-    pruned_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.PRUNED])
-    complete_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.COMPLETE])
+        pruned_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.PRUNED])
+        complete_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.COMPLETE])
 
-    print("Study statistics: ")
-    print("  Number of finished trials: ", len(study.trials))
+        print("Study statistics: ")
+        print("  Number of finished trials: ", len(study.trials))
 
-    print("Best trial:")
-    print("  Value: ", study.best_trial.value)
-    print("  Params: ")
-    for key, value in study.best_trial.params.items():
-        print("    {}: {}".format(key, value))
+        print("Best trial:")
+        print("  Value: ", study.best_trial.value)
+        print("  Params: ")
+        for key, value in study.best_trial.params.items():
+            print("    {}: {}".format(key, value))
 
-    print("Complete trials:")
-    for trial in complete_trials:
-        print("  Trial {}: {}".format(trial.number, trial.value))
+        print("Complete trials:")
+        for trial in complete_trials:
+            print("  Trial {}: {}".format(trial.number, trial.value))
 
-    print("Pruned trials:")
-    for trial in pruned_trials:
-        print("  Trial {}: {}".format(trial.number, trial.value))
+        print("Pruned trials:")
+        for trial in pruned_trials:
+            print("  Trial {}: {}".format(trial.number, trial.value))
+
+    else:
+        run()

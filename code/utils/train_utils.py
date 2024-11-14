@@ -8,18 +8,21 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.optim import lr_scheduler
 from .visualization import plot_results
 
-def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_precision, verbose=False):
+def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_precision, verbose=False, energy_loss=False):
     model.eval()
     total_loss = 0.0
     num_batches = 0
     
     with torch.no_grad():
         with (torch.autocast(device_type='cuda', dtype=data_type) if half_precision else contextlib.nullcontext()):
-            for images, masks in tqdm(dataloader, disable=(not verbose)):
+            for inputs, labels in tqdm(dataloader, disable=(not verbose)):
 
-                masks = masks.to(device)
-                predictions = model(images)
-                loss = loss_fn(predictions, masks)
+                labels = labels.to(device)
+                predictions = model(inputs)
+                if energy_loss:
+                    loss = loss_fn(inputs, predictions)
+                else:
+                    loss = loss_fn(predictions, labels)
                 total_loss += loss
                 num_batches += 1
         
@@ -30,7 +33,7 @@ def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_
 def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset, val_dataset, scaler, data_type, half_precision, comm, num_epochs, 
                          num_comm_fmaps, save_path, subdomains_dist, exchange_fmaps, devices, num_convs,
                          padding, depth, kernel_size, complexity, communication_network=None, dropout_rate=0.0, weight_decay_adam:float=1e-5, lr:float=1e-4, plot_freq:int=10,
-                         loss_func=None, val_loss_func=None, verbose=False, num_channels=3, track_loss_functions=None):
+                         loss_func=None, val_loss_func=torch.nn.MSELoss(), verbose=False, num_channels=3, track_loss_functions=None):
     
     # Check to make sure  
     if num_comm_fmaps == 0:
@@ -67,19 +70,22 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
         unet.train()
         epoch_losses = 0.0  # Initialize losses for the epoch
         
-        for images, masks in tqdm(dataloader_train, disable=(not verbose)):
+        for inputs, labels in tqdm(dataloader_train, disable=(not verbose)):
             optimizer.zero_grad()
-            
             with (torch.autocast(device_type='cuda', dtype=data_type) if half_precision else contextlib.nullcontext()):
                 
-                masks = masks.to(devices[0])
+                labels = labels.to(devices[0])
 
                 ## Forward propagation:
-                predictions = unet(images)
+                predictions = unet(inputs)
 
-                ## Backward propagation
-                l = loss_func(predictions, masks)
+                energy_loss = False
+                if energy_loss: 
+                    l = loss_func(inputs, predictions)
+                else:
+                    l = loss_func(predictions, labels)
                 
+                ## Backward propagation
             scaler.scale(l).backward()
             epoch_losses += l  # Add loss to epoch losses
 
@@ -112,11 +118,6 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
     
 
         # Compute and print validation loss
-        if val_loss_func is None:
-            val_loss_func = torch.nn.MSELoss()
-        else:
-            val_loss_func = val_loss_func
-
         val_loss = compute_validation_loss(unet, val_loss_func, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
         validation_losses.append(val_loss)
         epoch_losses = epoch_losses.item()
@@ -136,7 +137,8 @@ def train_parallel_model(model, dataloader_train, dataloader_val, train_dataset,
                 # tmp_train_loss = compute_validation_loss(unet, loss_fct, dataloader_train, devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
                 # writer.add_scalar(f"train-{name}", tmp_train_loss, epoch)
                 # summary_losses[f"train-{name}"] = tmp_train_loss
-                tmp_val_loss = compute_validation_loss(unet, loss_fct, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
+                energy_loss = True if name == "energy" else False
+                tmp_val_loss = compute_validation_loss(unet, loss_fct, dataloader_val, devices[0], data_type=data_type, half_precision=half_precision, verbose=False, energy_loss=energy_loss)
                 writer.add_scalar(f"val-{name}", tmp_val_loss, epoch)
                 summary_losses[f"val-{name}"] = tmp_val_loss
             except: pass

@@ -84,7 +84,7 @@ class MultiGPU_UNet_with_comm(nn.Module):
         return subdomain_tensors
         
     def forward(self, input_image_list):
-        assert len(input_image_list) == self.nx * self.ny, "Number of input images must match the device grid size (nx x ny)."
+        assert len(input_image_list) == self.nx * self.ny, f"Number of input images must match the device grid size (nx x ny):= ({self.nx}x{self.ny}) but is {len(input_image_list)}."
         
         # Send to correct device and pass through encoder
         input_images_on_devices = [input_image.to(self._select_device(index)) for index, input_image in enumerate(input_image_list)]

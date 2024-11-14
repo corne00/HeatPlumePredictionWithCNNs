@@ -17,11 +17,13 @@ class NormalizeTransform:
         return data
     
     def reverse(self,data,type = "Labels"):
+        # output for out of place operation, required for training
         data = torch.swapaxes(data,0,1)
-        for prop, stats in self.info[type].items():
+        output = torch.zeros_like(data)
+        for _, stats in self.info[type].items():
             index = stats["index"]
-            self.__reverse_norm(data,index,stats)
-        return data
+            output[index] = self.__reverse_norm(data,index,stats)
+        return output
     
     def __apply_norm(self,data,index,stats):
         norm = stats["norm"]
@@ -47,18 +49,17 @@ class NormalizeTransform:
         #     assert data.shape[0] <= data.shape[1], "Properties must be in 0th dimension; batches pushed to 1st dimension"
         norm = stats["norm"]
 
-        def rescale():
+        def rescale(data, index, stats, out_min, out_max):
             delta = stats["max"] - stats["min"]
-            data[index] = (data[index] - self.out_min) / (self.out_max - self.out_min) * delta + stats["min"]
-
+            return (data[index] - out_min) / (out_max - out_min) * delta + stats["min"]
+        
         if norm == "LogRescale":
-            rescale()
-            data[index] = np.exp(data[index]) + stats["min"] - 1
+            return np.exp(rescale(data, index, stats, self.out_min, self.out_max)) + stats["min"] - 1
         elif norm == "Rescale":
-            rescale()
+            return rescale(data, index, stats, self.out_min, self.out_max)
         elif norm == "Standardize":
-            data[index] = data[index] * stats["std"] + stats["mean"]
+            return data[index] * stats["std"] + stats["mean"]
         elif norm is None:
-            pass
+            return data[index]
         else:
-            raise ValueError(f"Normalization type '{stats['Norm']}' not recognized")
+            raise ValueError(f"Normalization type '{stats['norm']}' not recognized")
