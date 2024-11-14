@@ -6,3 +6,4 @@ slurm_outputs/
 code/dataprocessing/__pycache__/
 code/models/__pycache__/
 code/utils/__pycache__/
+code/unittests/__pycache__/
