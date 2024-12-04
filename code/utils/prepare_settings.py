@@ -3,8 +3,10 @@ import datetime
 import json
 import yaml
 import pathlib
+from typing import Union
 
 def prepare_settings():
+    destination_dir = pathlib.Path("results")
     now = datetime.datetime.now()
     current_time = now.strftime("%Y_%m_%d_%H_%M_%S_") + f"{now.microsecond // 1000:03d}"
 
@@ -16,7 +18,7 @@ def prepare_settings():
     args = parser.parse_args()
     # STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/unittesting"
     # args.save_path = STUDY_DIR + "/energy_loss_finetune"
-    save_path = pathlib.Path("./results") / args.save_path
+    save_path = destination_dir / args.save_path
 
     if save_path.exists():
         print(f"Path {save_path} already exists. Taking settings from there.")
@@ -32,6 +34,27 @@ def prepare_settings():
         settings["model"]["padding"] = settings["model"]["kernel_size"] // 2
 
     return settings, save_path
+
+def init_hyperparams_and_settings(path):
+    if (path/"hyperparam_search_options.yaml").exists():
+        load_hyperparam = path/"hyperparam_search_options.yaml"
+        load_settings = path/"settings.yaml"
+        to_dump = False
+
+    else:
+        load_hyperparam = "default_hyperparam_searchspace.yaml"
+        load_settings = "default_settings.yaml"
+        to_dump = True
+
+    hyperparams = yaml.safe_load(open(load_hyperparam))
+    settings = yaml.safe_load(open(load_settings))
+
+    if to_dump:
+        with open(path/"hyperparam_search_options.yaml", 'w') as f:
+            yaml.dump(hyperparams, f)
+        with open(path/"settings.yaml", 'w') as f:
+            yaml.dump(settings, f)
+    return hyperparams, settings
 
 
 def save_args_to_json(args, filename="args.json"):

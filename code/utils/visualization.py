@@ -3,7 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 
-def plot_results(unet, savepath, epoch_number, dataloaders):
+def plot_results(model, savepath, epoch_number, dataloaders):
     def plot_subplot(position, image, title='', vmin=None, vmax=None, colorbar=False):
         plt.subplot(4, 3, position)
         plt.axis("off")
@@ -14,10 +14,10 @@ def plot_results(unet, savepath, epoch_number, dataloaders):
             plt.title(title)
 
     def process_and_plot(images, masks, start_pos, title='', colorbar=True):
-        unet.eval()
+        model.eval()
         with torch.no_grad():
-            predictions = unet([img.float().unsqueeze(0) for img in images]).cpu()
-            full_images = unet.concatenate_tensors([img.unsqueeze(0) for img in images]).squeeze().cpu()
+            predictions = model([img.float().unsqueeze(0) for img in images]).cpu()
+            full_images = model.concatenate_tensors([img.unsqueeze(0) for img in images]).squeeze().cpu()
 
         for i in range(3):
             title = (title if i ==2 else '')

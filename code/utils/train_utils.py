@@ -68,7 +68,7 @@ def train_parallel_model(model:MultiGPU_UNet_with_comm, dataloaders, settings, d
                 ## Forward propagation:
                 predictions = model(inputs)
 
-                energy_loss = True
+                energy_loss = False
                 if energy_loss: 
                     l = loss_func(inputs, predictions)
                 else:
@@ -139,7 +139,7 @@ def train_parallel_model(model:MultiGPU_UNet_with_comm, dataloaders, settings, d
             torch.cuda.empty_cache()
 
         if (epoch + 1) % plot_freq == 0:
-            plot_results(unet=model, savepath=save_path, epoch_number=epoch, dataloaders=dataloaders)
+            plot_results(model=model, savepath=save_path, epoch_number=epoch, dataloaders=dataloaders)
 
         # if torch.cuda.is_available()
         #     # Track maximum GPU memory used

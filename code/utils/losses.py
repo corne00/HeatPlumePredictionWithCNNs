@@ -9,9 +9,7 @@ from dataprocessing.equations_of_state import eos_water_density_IFC67, eos_water
 from dataprocessing.data_utils import NormalizeTransform
 
 def matchLoss(name:str, **kwargs):
-    if name == "energy":
-        return EnergyLoss(**kwargs)
-    elif name == "mse":
+    if name == "mse":
         return nn.MSELoss()
     elif name in ["mae", "l1"]:
         return nn.L1Loss()
@@ -19,6 +17,26 @@ def matchLoss(name:str, **kwargs):
         return WeightedMSELoss(**kwargs)
     elif name == "combi_0_75":
         return CombiLoss(0.75)
+    elif name == "combi_0_5":
+        return CombiLoss(0.5)
+    elif name == "combi_0_25":
+        return CombiLoss(0.25)
+    elif name == "combi_RMSE_MAE":
+        return CombiRMSE_and_MAELoss()
+    elif name == "thresholded_mae_0_02":
+        return ThresholdedMAELoss(threshold=0.02, weight_ratio=0.1)
+    elif name == "thresholded_mae_0_04":
+        return ThresholdedMAELoss(threshold=0.04, weight_ratio=0.1)
+    elif name == "thresholded_mae_0_01":
+        return ThresholdedMAELoss(threshold=0.01, weight_ratio=0.1)
+    elif name == "weighted_mae_epsilon_0_1":
+        return WeightedMAELoss(epsilon=0.1)
+    elif name == "weighted_mae_epsilon_0_2":
+        return WeightedMAELoss(epsilon=0.2)
+    elif name == "weighted_mae_epsilon_0_05":
+        return WeightedMAELoss(epsilon=0.05)
+    elif name == "energy":
+        return EnergyLoss(**kwargs)
     else:
         raise ValueError(f"Loss function {name} not found. Consider extending 'matchLoss' function.")
 

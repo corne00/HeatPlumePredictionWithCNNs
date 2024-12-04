@@ -1,5 +1,4 @@
-# Standard library imports
-import os
+# Library imports
 import json
 import pathlib
 import numpy as np
@@ -9,11 +8,10 @@ import torch
 from torch.utils.data import DataLoader
 from torch.cuda.amp import GradScaler
 import optuna
-from argparse import Namespace
 from typing import Dict
 
 from models import *
-from utils.prepare_settings import prepare_settings, save_args_to_json
+from utils.prepare_settings import prepare_settings, init_hyperparams_and_settings
 from utils.visualization import plot_results
 from dataprocessing import init_data
 from utils.train_utils import *
@@ -21,10 +19,10 @@ from utils.visualization import *
 from utils.losses import ThresholdedMAELoss, WeightedMAELoss, CombiRMSE_and_MAELoss, CombiLoss, EnergyLoss, matchLoss
 from dataprocessing.dataloaders import DatasetMultipleSubdomains
 
-STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/unittesting"
+STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/testing_sett"
 
 def evaluate(unet:MultiGPU_UNet_with_comm, losses:Dict[str,list], dataloaders:Dict[str,DataLoader], save_path: pathlib.Path):
-    plot_results(unet=unet, savepath=save_path, epoch_number="best", dataloaders=dataloaders)
+    plot_results(model=unet, savepath=save_path, epoch_number="best", dataloaders=dataloaders)
     
     # Save to a JSON file
     with open(save_path / 'losses.json', 'w') as json_file:
@@ -32,15 +30,11 @@ def evaluate(unet:MultiGPU_UNet_with_comm, losses:Dict[str,list], dataloaders:Di
 
 def objective(trial):
     # Load and save the arguments from the arge parser and default settings
-    settings, save_path = prepare_settings()
+    hyperparams, settings = init_hyperparams_and_settings(path=pathlib.Path(STUDY_DIR))
 
     # OPTUNAT: OVERWRITE 
-    save_path = f"{STUDY_DIR}/{trial.number}"
-    try:
-        os.makedirs(save_path)
-    except:
-        print("Results directory already exists!", flush=True)
-        exit()
+    save_path = pathlib.Path(f"{STUDY_DIR}/{trial.number}")
+    save_path.mkdir(parents=True, exist_ok=False)
 
 
     # Check if we have half precision
@@ -51,69 +45,51 @@ def objective(trial):
 
     # Set devices
     devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())] or ["cpu"]
-    devices = ["cuda:2"]
+    # devices = ["cuda:2"]
     print("Available GPUs:", devices, flush=True)
 
     # OPTUNAT: OVERWRITE 
     # data_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/"
-    settings["data"]["dir"] = "/scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/"
-    settings["data"]["num_channels"] = 3
+    settings["data"]["dir"] = hyperparams["data"]
+    settings["model"]["UNet"]["num_channels"] = hyperparams["num_channels"]
 
 
     try:
-        settings["data"]["batch_size_training"] = trial.suggest_categorical("batch_size", [2, 4, 8, 16])
-        dataloaders = init_data(settings["data"], image_dir=settings["data"]["dir"]+"Inputs", mask_dir=settings["data"]["dir"]+"Labels")
-
-        # Generate the model
-        settings["model"]["kernel_size"] = trial.suggest_categorical("kernel_size", [3, 5, 7])
-        settings["model"]["UNet"]["depth"] = trial.suggest_categorical("depth", [4, 5, 6, 7])
-        settings["model"]["UNet"]["complexity"] = trial.suggest_categorical("complexity", [8, 16, 32, 64])
-        settings["model"]["UNet"]["num_convs"] = trial.suggest_categorical("num_convs", [1, 2, 3])
-
-        # Define loss function options
-        loss_functions = {
-            "mse": torch.nn.MSELoss(),
-            "combi_0_75": CombiLoss(0.75),
-            "combi_0_5": CombiLoss(0.5),
-            "combi_0_25": CombiLoss(0.25),
-            "l1": torch.nn.L1Loss(),
-            # "combi_RMSE_MAE": CombiRMSE_and_MAELoss(),
-            "thresholded_mae_0_02": ThresholdedMAELoss(threshold=0.02, weight_ratio=0.1),
-            "thresholded_mae_0_04": ThresholdedMAELoss(threshold=0.04, weight_ratio=0.1),
-            "thresholded_mae_0_01": ThresholdedMAELoss(threshold=0.01, weight_ratio=0.1),
-            "weighted_mae_epsilon_0_1": WeightedMAELoss(epsilon=0.1),
-            # "weighted_mae_epsilon_0_2": WeightedMAELoss(epsilon=0.2),
-            # "weighted_mae_epsilon_0_05": WeightedMAELoss(epsilon=0.05),
-            # "energy_mse": EnergyLoss(data_dir=data_dir, device=devices[0]),
-        }
-
         track_loss_functions = {
             "mse": torch.nn.MSELoss(),
             "l1": torch.nn.L1Loss(),
             # "energy":EnergyLoss(data_dir=data_dir, device=devices[0]),
         }
 
-        # Generate the optimizers
-        settings["training"]["lr"] = trial.suggest_float("lr", 1e-5, 1e-3, log=True) #suggest_categorical("lr", [1e-3, 2e-4, 1e-4, 5e-5, 1e-5])
-        settings["training"]["adam_weight_decay"] = trial.suggest_categorical("weight_decay", [0, 1e-4, 1e-3, 1e-2, 1e-1])
+        settings["data"]["batch_size_training"] = trial.suggest_categorical("batch_size", [int(item) for item in hyperparams["batch_size"]])
+        dataloaders = init_data(settings["data"], image_dir=settings["data"]["dir"]+"Inputs", mask_dir=settings["data"]["dir"]+"Labels")
 
-        # Select the loss function based on the trial's suggestion
-        settings["training"]["train_loss"] = trial.suggest_categorical("loss function", list(loss_functions.keys()))
+        # Generate trial suggestions
+        settings["model"]["kernel_size"] = trial.suggest_categorical("kernel_size", [int(item) for item in hyperparams["kernel_size"]])
+        settings["model"]["UNet"]["depth"] = trial.suggest_categorical("depth", [int(item) for item in hyperparams["depth"]])
+        settings["model"]["UNet"]["complexity"] = trial.suggest_categorical("complexity", [int(item) for item in hyperparams["complexity"]])
+        settings["model"]["UNet"]["num_convs"] = trial.suggest_categorical("num_convs", [int(item) for item in hyperparams["num_convs"]])
+
+        settings["training"]["lr"] = trial.suggest_float("lr", float(hyperparams["lr"]["min"]),  float(hyperparams["lr"]["max"]), log=hyperparams["lr"]["log"]) #suggest_categorical("lr", [1e-3, 2e-4, 1e-4, 5e-5, 1e-5])
+        settings["training"]["adam_weight_decay"] = trial.suggest_categorical("weight_decay", [float(item) for item in hyperparams["weight_decay"]])
+
+        settings["training"]["train_loss"] = trial.suggest_categorical("loss function", hyperparams["loss_functions"])
         
-        print("final settings", settings)
+        print("trial settings", settings)
+
         # dump settings to save_path
         with open(save_path / 'settings.yaml', 'w') as f:
             yaml.dump(settings, f)
 
-        loss_func = loss_functions[settings["training"]["train_loss"]]
-        val_loss_func = loss_functions[settings["training"]["val_loss"]]
+        loss_func = matchLoss(settings["training"]["train_loss"])
+        val_loss_func = matchLoss(settings["training"]["val_loss"])
         model = MultiGPU_UNet_with_comm(settings, devices=devices)
-        unet, data = train_parallel_model(model, dataloaders, settings, devices, save_path, scaler=scaler, data_type=data_type,  half_precision=half_precision, loss_func=loss_func, val_loss_func=val_loss_func, track_loss_functions=track_loss_functions) 
+        model, data = train_parallel_model(model, dataloaders, settings, devices, save_path, scaler=scaler, data_type=data_type,  half_precision=half_precision, loss_func=loss_func, val_loss_func=val_loss_func, track_loss_functions=track_loss_functions) 
         
         loss = np.min(data["val_losses"])
 
         # Save and calculate losses
-        evaluate(unet, data, dataloaders, save_path)
+        evaluate(model, data, dataloaders, save_path)
         
     except Exception as e:
         print(f"Training failed with exception: {e}", flush=True)
@@ -153,26 +129,27 @@ def run():
     loss_func = matchLoss(settings["training"]["train_loss"], data_dir=settings["data"]["dir"], device=devices[0])
     val_loss_func = matchLoss(settings["training"]["val_loss"])
     model = MultiGPU_UNet_with_comm(settings, devices=devices)
-    unet, data = train_parallel_model(model, dataloaders, settings, devices, save_path, scaler=scaler, data_type=data_type,  half_precision=half_precision, loss_func=loss_func, val_loss_func=val_loss_func, track_loss_functions=track_loss_functions) 
+    model, data = train_parallel_model(model, dataloaders, settings, devices, save_path, scaler=scaler, data_type=data_type,  half_precision=half_precision, loss_func=loss_func, val_loss_func=val_loss_func, track_loss_functions=track_loss_functions) 
 
     # Save and calculate losses
-    evaluate(unet, data, dataloaders, save_path)
+    evaluate(model, data, dataloaders, save_path)
         
     print("Finished!", flush=True)
 
 if __name__ == "__main__":
-    hyperparam_search = False
+    hyperparam_search = True
     print(f"Running {'hyperparameter search' if hyperparam_search else 'single run'}", flush=True)
     
     # STUDY_DIR = "/scratch/e451412/code/results/pki_5000_loss_functions"
-    STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/test_energy_loss"
+    STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/opti_settings"
+    
 
     study_dir = pathlib.Path(STUDY_DIR)
     study_dir.mkdir(parents=True, exist_ok=True)
 
     if hyperparam_search:
         study = optuna.create_study(direction="minimize", storage=f"sqlite:///{STUDY_DIR}/hyperparam_opti.db", study_name="search", load_if_exists=True)
-        study.optimize(objective, n_trials=20)
+        study.optimize(objective, n_trials=1)
 
         pruned_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.PRUNED])
         complete_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.COMPLETE])

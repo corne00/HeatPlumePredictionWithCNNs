@@ -1,0 +1,13 @@
+data            : /scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/
+num_channels    : 3
+batch_size      : [2, 4, 8, 16]
+kernel_size     : [3, 5, 7]
+depth           : [4, 5, 6, 7]
+complexity      : [8, 16, 32, 64]
+num_convs       : [1, 2, 3]
+lr              : 
+  min             : 1e-5
+  max             : 1e-3
+  log             : True
+weight_decay    : [0, 1e-4, 1e-3, 1e-2, 1e-1]
+loss_functions  : ["mse", "combi_0_75", "combi_0_5", "combi_0_25", "l1", "thresholded_mae_0_02",     "thresholded_mae_0_04", "thresholded_mae_0_01", "weighted_mae_epsilon_0_1"] # "combi_RMSE_MAE", "weighted_mae_epsilon_0_2", "weighted_mae_epsilon_0_05", "energy", 
