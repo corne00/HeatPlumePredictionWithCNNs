@@ -1,0 +1,26 @@
+data:
+  dir: /scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/
+  batch_size_training: 2      # Batch size used for training
+  batch_size_testing: 2       # Batch size used for testing and validation
+  subdomains_dist:            # Distribution of subdomains
+  - 1
+  - 1
+model:
+  UNet:
+    num_channels: 5
+    complexity: 8             # Complexity level (number of features in the first layer)
+    depth: 6                  # Depth of the encoder-decoder model
+    num_convs: 3              # Number of convolutions in each UNet-block
+  comm:
+    comm: false               # Enable coarse network
+    num_comm_fmaps: 0         # Number of feature maps sent to the coarse network
+    exchange_fmaps: false     # Enable feature map exchange between subdomains
+  kernel_size: 3            # Size of the used convolutional kernel
+  padding:                  # Padding size
+  dropout_rate: 0.0
+training:
+  num_epochs: 100             # Number of training epochs
+  train_loss: energy
+  val_loss: combi_0_75        # Validation loss function
+  adam_weight_decay: 0.1
+  lr: 0.00018

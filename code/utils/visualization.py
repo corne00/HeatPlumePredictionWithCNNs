@@ -3,7 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 
-def plot_results(unet, savepath, epoch_number, train_dataset, val_dataset):
+def plot_results(unet, savepath, epoch_number, dataloaders):
     def plot_subplot(position, image, title='', vmin=None, vmax=None, colorbar=False):
         plt.subplot(4, 3, position)
         plt.axis("off")
@@ -32,14 +32,14 @@ def plot_results(unet, savepath, epoch_number, train_dataset, val_dataset):
     # Adjust spacing between plots
     plt.subplots_adjust(hspace=0.1, wspace=0.1)
 
-    train_image, train_mask = train_dataset[0]
+    train_image, train_mask = dataloaders["train"].dataset[0]
     process_and_plot(train_image, train_mask, 1, title='training', colorbar=True)
 
-    val_image, val_mask = val_dataset[0]
+    val_image, val_mask = dataloaders["val"].dataset[0]
     process_and_plot(val_image, val_mask, 7, title='validation', colorbar=True)
 
-    os.makedirs(os.path.join(savepath, "figures"), exist_ok=True)
-    plt.savefig(os.path.join(savepath, "figures", f"epoch_{epoch_number}.png"), bbox_inches='tight')
+    os.makedirs(savepath / "figures", exist_ok=True)
+    plt.savefig(savepath / "figures" / f"epoch_{epoch_number}.png", bbox_inches='tight')
     plt.close()
 
 

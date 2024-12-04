@@ -3,37 +3,41 @@ import os
 import json
 import pathlib
 import numpy as np
+import yaml
 
 import torch
+from torch.utils.data import DataLoader
 from torch.cuda.amp import GradScaler
 import optuna
 from argparse import Namespace
 from typing import Dict
 
 from models import *
-from utils.arg_parser import parse_args, save_args_to_json
+from utils.prepare_settings import prepare_settings, save_args_to_json
 from utils.visualization import plot_results
 from dataprocessing import init_data
 from utils.train_utils import *
 from utils.visualization import *
-from utils.losses import ThresholdedMAELoss, WeightedMAELoss, CombiRMSE_and_MAELoss, CombiLoss, EnergyLoss
+from utils.losses import ThresholdedMAELoss, WeightedMAELoss, CombiRMSE_and_MAELoss, CombiLoss, EnergyLoss, matchLoss
 from dataprocessing.dataloaders import DatasetMultipleSubdomains
 
 STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/unittesting"
 
-def evaluate(args:Namespace, unet:MultiGPU_UNet_with_comm, losses:Dict[str,list], datasets:Dict[str,DatasetMultipleSubdomains]):
-    plot_results(unet=unet, savepath=args.save_path, epoch_number="best", train_dataset=datasets["train"], val_dataset=datasets["val"])
+def evaluate(unet:MultiGPU_UNet_with_comm, losses:Dict[str,list], dataloaders:Dict[str,DataLoader], save_path: pathlib.Path):
+    plot_results(unet=unet, savepath=save_path, epoch_number="best", dataloaders=dataloaders)
     
     # Save to a JSON file
-    with open(os.path.join(args.save_path, 'losses.json'), 'w') as json_file:
+    with open(save_path / 'losses.json', 'w') as json_file:
         json.dump(losses, json_file)
 
 def objective(trial):
-    # Load and save the arguments from the arge parser
-    args = parse_args()
-    args.save_path = f"{STUDY_DIR}/{trial.number}"
+    # Load and save the arguments from the arge parser and default settings
+    settings, save_path = prepare_settings()
+
+    # OPTUNAT: OVERWRITE 
+    save_path = f"{STUDY_DIR}/{trial.number}"
     try:
-        os.makedirs(args.save_path)
+        os.makedirs(save_path)
     except:
         print("Results directory already exists!", flush=True)
         exit()
@@ -42,7 +46,6 @@ def objective(trial):
     # Check if we have half precision
     half_precision = torch.cuda.is_available()
     data_type = torch.float16 if half_precision else torch.float32
-
     # Half precision scaler
     scaler = GradScaler(enabled=half_precision)
 
@@ -51,21 +54,21 @@ def objective(trial):
     devices = ["cuda:2"]
     print("Available GPUs:", devices, flush=True)
 
-    # Set datasets
+    # OPTUNAT: OVERWRITE 
     # data_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/"
-    data_dir = "/scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/"
-    image_dir = data_dir+"Inputs"
-    label_dir  = data_dir+"Labels"
-    num_channels = 5
+    settings["data"]["dir"] = "/scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/"
+    settings["data"]["num_channels"] = 3
+
+
     try:
-        args.batch_size_training = trial.suggest_categorical("batch_size", [2, 4, 8, 16])
-        dataloaders, datasets = init_data(args, image_dir, label_dir)
+        settings["data"]["batch_size_training"] = trial.suggest_categorical("batch_size", [2, 4, 8, 16])
+        dataloaders = init_data(settings["data"], image_dir=settings["data"]["dir"]+"Inputs", mask_dir=settings["data"]["dir"]+"Labels")
 
         # Generate the model
-        args.depth = trial.suggest_categorical("depth", [4, 5, 6, 7])
-        args.complexity = trial.suggest_categorical("complexity", [8, 16, 32, 64])
-        args.kernel_size = trial.suggest_categorical("kernel_size", [3, 5, 7])
-        args.num_convs = trial.suggest_categorical("num_convs", [1, 2, 3])
+        settings["model"]["kernel_size"] = trial.suggest_categorical("kernel_size", [3, 5, 7])
+        settings["model"]["UNet"]["depth"] = trial.suggest_categorical("depth", [4, 5, 6, 7])
+        settings["model"]["UNet"]["complexity"] = trial.suggest_categorical("complexity", [8, 16, 32, 64])
+        settings["model"]["UNet"]["num_convs"] = trial.suggest_categorical("num_convs", [1, 2, 3])
 
         # Define loss function options
         loss_functions = {
@@ -81,43 +84,36 @@ def objective(trial):
             "weighted_mae_epsilon_0_1": WeightedMAELoss(epsilon=0.1),
             # "weighted_mae_epsilon_0_2": WeightedMAELoss(epsilon=0.2),
             # "weighted_mae_epsilon_0_05": WeightedMAELoss(epsilon=0.05),
-            "energy_mse": EnergyLoss(data_dir=data_dir, device=devices[0]),
+            # "energy_mse": EnergyLoss(data_dir=data_dir, device=devices[0]),
         }
 
         track_loss_functions = {
             "mse": torch.nn.MSELoss(),
             "l1": torch.nn.L1Loss(),
-            "energy":EnergyLoss(data_dir=data_dir, device=devices[0]),
+            # "energy":EnergyLoss(data_dir=data_dir, device=devices[0]),
         }
 
         # Generate the optimizers
-        args.lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True) #suggest_categorical("lr", [1e-3, 2e-4, 1e-4, 5e-5, 1e-5])
-        args.weight_decay_adam = trial.suggest_categorical("weight_decay", [0, 1e-4, 1e-3, 1e-2, 1e-1])
+        settings["training"]["lr"] = trial.suggest_float("lr", 1e-5, 1e-3, log=True) #suggest_categorical("lr", [1e-3, 2e-4, 1e-4, 5e-5, 1e-5])
+        settings["training"]["adam_weight_decay"] = trial.suggest_categorical("weight_decay", [0, 1e-4, 1e-3, 1e-2, 1e-1])
 
         # Select the loss function based on the trial's suggestion
-        loss_function_names = list(loss_functions.keys())
-        args.loss_function = trial.suggest_categorical("loss function", loss_function_names)
-        loss_function = loss_functions[args.loss_function]
+        settings["training"]["train_loss"] = trial.suggest_categorical("loss function", list(loss_functions.keys()))
         
-        save_args_to_json(args=args, filename=os.path.join(args.save_path, "args.json"))
+        print("final settings", settings)
+        # dump settings to save_path
+        with open(save_path / 'settings.yaml', 'w') as f:
+            yaml.dump(settings, f)
 
-        unet, data = train_parallel_model(model=MultiGPU_UNet_with_comm, dataloader_val=dataloaders["val"], 
-                                                                    dataloader_train=dataloaders["train"], scaler=scaler, data_type=data_type, 
-                                                                    half_precision=True, train_dataset=datasets["train"], val_dataset=datasets["val"], 
-                                                                    comm=args.comm, num_epochs=args.num_epochs, num_comm_fmaps=args.num_comm_fmaps,  
-                                                                    save_path=args.save_path, subdomains_dist=args.subdomains_dist, 
-                                                                    exchange_fmaps=args.exchange_fmaps, padding=args.padding, 
-                                                                    depth=args.depth, kernel_size=args.kernel_size, communication_network=None, 
-                                                                    complexity=args.complexity, dropout_rate=0.0, devices=devices, 
-                                                                    num_convs=args.num_convs, weight_decay_adam=args.weight_decay_adam, lr=args.lr,
-                                                                    loss_func=loss_function, val_loss_func=loss_functions[args.val_loss],
-                                                                    verbose=False,
-                                                                    num_channels=num_channels, plot_freq=10, track_loss_functions=track_loss_functions)
+        loss_func = loss_functions[settings["training"]["train_loss"]]
+        val_loss_func = loss_functions[settings["training"]["val_loss"]]
+        model = MultiGPU_UNet_with_comm(settings, devices=devices)
+        unet, data = train_parallel_model(model, dataloaders, settings, devices, save_path, scaler=scaler, data_type=data_type,  half_precision=half_precision, loss_func=loss_func, val_loss_func=val_loss_func, track_loss_functions=track_loss_functions) 
         
         loss = np.min(data["val_losses"])
 
         # Save and calculate losses
-        evaluate(args, unet, data, datasets)
+        evaluate(unet, data, dataloaders, save_path)
         
     except Exception as e:
         print(f"Training failed with exception: {e}", flush=True)
@@ -127,60 +123,40 @@ def objective(trial):
     return loss
 
 def run():
-    # Load and save the arguments from the arge parser
-    args = parse_args()
-    args.save_path = STUDY_DIR + "/testing"
-    pathlib.Path(args.save_path).mkdir(parents=True, exist_ok=True)
-
-    args.weight_decay_adam = 1e-4
-    args.lr = 1e-4
+    # Load and save the arguments from the arge parser and default settings
+    settings, save_path = prepare_settings()
 
     # Check if we have half precision
     half_precision = torch.cuda.is_available()
     data_type = torch.float16 if half_precision else torch.float32
-
     # Half precision scaler
     scaler = GradScaler(enabled=half_precision)
 
     # Set devices
     devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())] or ["cpu"]
-    devices = ["cuda:3"]
+    devices = ["cuda:2"]
     print("Available GPUs:", devices, flush=True)
 
-    # Set datasets
-    # data_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/"
-    data_dir = "/scratch/sgs/pelzerja/datasets_prepared/allin1/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/"
-    image_dir = data_dir+"Inputs"
-    label_dir  = data_dir+"Labels"
-    num_channels = 5
-    dataloaders, datasets = init_data(args, image_dir, label_dir)
-
-    # Define loss function options
-    loss_function = CombiLoss(0.75) #EnergyLoss(data_dir=data_dir, device=devices[0]) #
+    dataloaders = init_data(settings["data"], image_dir=settings["data"]["dir"]+"Inputs", mask_dir=settings["data"]["dir"]+"Labels")
     
     track_loss_functions = {
         "mse": torch.nn.MSELoss(),
         "l1": torch.nn.L1Loss(),
-        "energy":EnergyLoss(data_dir=data_dir, device=devices[0]),
+        "energy":EnergyLoss(data_dir=settings["data"]["dir"], device=devices[0]),
     }
 
-    save_args_to_json(args=args, filename=os.path.join(args.save_path, "args.json"))
+    print("final settings", settings)
+    # dump settings to save_path
+    with open(save_path / 'settings.yaml', 'w') as f:
+        yaml.dump(settings, f)
 
-    unet, data = train_parallel_model(model=MultiGPU_UNet_with_comm, dataloader_val=dataloaders["val"], 
-                                                                dataloader_train=dataloaders["train"], scaler=scaler, data_type=data_type, 
-                                                                half_precision=True, train_dataset=datasets["train"], val_dataset=datasets["val"], 
-                                                                comm=args.comm, num_epochs=args.num_epochs, num_comm_fmaps=args.num_comm_fmaps,  
-                                                                save_path=args.save_path, subdomains_dist=args.subdomains_dist, 
-                                                                exchange_fmaps=args.exchange_fmaps, padding=args.padding, 
-                                                                depth=args.depth, kernel_size=args.kernel_size, communication_network=None, 
-                                                                complexity=args.complexity, dropout_rate=0.0, devices=devices, 
-                                                                num_convs=args.num_convs, weight_decay_adam=args.weight_decay_adam, lr=args.lr,
-                                                                loss_func=loss_function, val_loss_func=CombiLoss(0.75), #loss_functions[args.val_loss], 
-                                                                verbose=False,
-                                                                num_channels=num_channels, plot_freq=10, track_loss_functions=track_loss_functions)
-    
+    loss_func = matchLoss(settings["training"]["train_loss"], data_dir=settings["data"]["dir"], device=devices[0])
+    val_loss_func = matchLoss(settings["training"]["val_loss"])
+    model = MultiGPU_UNet_with_comm(settings, devices=devices)
+    unet, data = train_parallel_model(model, dataloaders, settings, devices, save_path, scaler=scaler, data_type=data_type,  half_precision=half_precision, loss_func=loss_func, val_loss_func=val_loss_func, track_loss_functions=track_loss_functions) 
+
     # Save and calculate losses
-    evaluate(args, unet, data, datasets)
+    evaluate(unet, data, dataloaders, save_path)
         
     print("Finished!", flush=True)
 
@@ -196,7 +172,7 @@ if __name__ == "__main__":
 
     if hyperparam_search:
         study = optuna.create_study(direction="minimize", storage=f"sqlite:///{STUDY_DIR}/hyperparam_opti.db", study_name="search", load_if_exists=True)
-        study.optimize(objective, n_trials=1)
+        study.optimize(objective, n_trials=20)
 
         pruned_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.PRUNED])
         complete_trials = study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.COMPLETE])

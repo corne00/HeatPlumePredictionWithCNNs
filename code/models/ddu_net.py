@@ -1,39 +1,53 @@
 import torch
 import torch.nn as nn
 import copy
+from typing import Dict
 from .sub_modules import CNNCommunicator, Encoder, Decoder
 
 class MultiGPU_UNet_with_comm(nn.Module):
-    def __init__(self, n_channels, n_classes, input_shape, num_comm_fmaps, devices, depth=3, subdom_dist=(2, 2),
-                 bilinear=False, comm=True, complexity=32, dropout_rate=0.1, kernel_size=5, padding=2, 
-                 communicator_type=None, comm_network_but_no_communication=False, communication_network_def=None, num_convs=2):
+    # Initialize the network architecture
+    # unet = model(communicator_type=None, comm_network_but_no_communication=(not exchange_fmaps), 
+    #                                communication_network_def=communication_network, num_convs=num_convs)
+    def __init__(self, settings: Dict, n_classes: int = 1, input_shape: tuple = (640,640), devices: list = ["cuda:0"], bilinear: bool = False, communicator_type = None, comm_network_but_no_communication = None, communication_network_def = None):
         super(MultiGPU_UNet_with_comm, self).__init__()
-
-        self.n_channels = n_channels
+        # init general part
         self.n_classes = n_classes
         self.input_shape = input_shape
-        self.num_comm_fmaps = num_comm_fmaps
         self.devices = devices
-        self.depth = depth
-        self.subdom_dist = subdom_dist
-        self.nx, self.ny = subdom_dist
+
+        # init model
+        self.kernel_size = settings["model"]["kernel_size"]
+        self.padding = settings["model"]["padding"]
+        self.dropout_rate = settings["model"]["dropout_rate"]
+
+        # init unet-specific part
+        self.n_channels = settings["model"]["UNet"]["num_channels"]
+        self.depth = settings["model"]["UNet"]["depth"]
+        self.complexity = settings["model"]["UNet"]["complexity"]
+        self.num_convs = settings["model"]["UNet"]["num_convs"]
+
+        # init comm-specific part
+        self.num_comm_fmaps = settings["model"]["comm"]["num_comm_fmaps"]
+        if self.num_comm_fmaps == 0:
+            self.comm = False
+        else:
+            self.comm = settings["model"]["comm"]["comm"]
+        self.subdom_dist = settings["data"]["subdomains_dist"]
+        self.nx, self.ny = settings["data"]["subdomains_dist"]
         self.bilinear = bilinear
-        self.comm = comm
-        self.complexity = complexity
-        self.dropout_rate = dropout_rate
-        self.kernel_size = kernel_size
-        self.padding = padding
+
         self.communicator_type = communicator_type
-        self.comm_network_but_no_communication = comm_network_but_no_communication
+        if not comm_network_but_no_communication is None:
+            self.comm_network_but_no_communication = (not settings["comm"]["exchange_fmaps"])
+        else:
+            self.comm_network_but_no_communication = comm_network_but_no_communication
         self.communication_network_def = communication_network_def
-        self.num_convs = num_convs
 
         self.init_encoders()
         self.init_decoders()
         
         if self.comm:
-            self.communication_network = self.communication_network_def(in_channels=num_comm_fmaps, out_channels=num_comm_fmaps,
-                                                         dropout_rate=dropout_rate, kernel_size=kernel_size, padding=padding).to(devices[0])
+            self.communication_network = self.communication_network_def(in_channels=self.num_comm_fmaps, out_channels=self.num_comm_fmaps, dropout_rate=self.dropout_rate, kernel_size=self.kernel_size, padding=self.padding).to(devices[0])
 
     def init_encoders(self):
         encoder = Encoder(n_channels=self.n_channels, depth=self.depth, complexity=self.complexity,
@@ -138,3 +152,11 @@ class MultiGPU_UNet_with_comm(nn.Module):
         else:
             print("No communication network found in dataset / no comm. network found")
             
+    def parameters(self):
+              
+        if self.comm:
+            parameters = list(self.encoders[0].parameters()) + list(self.decoders[0].parameters()) + list(self.communication_network.parameters()) 
+        else:
+            parameters = list(self.encoders[0].parameters()) + list(self.decoders[0].parameters())
+            
+        return parameters

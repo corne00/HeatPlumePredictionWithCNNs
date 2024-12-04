@@ -8,6 +8,20 @@ import contextlib
 from dataprocessing.equations_of_state import eos_water_density_IFC67, eos_water_enthalphy
 from dataprocessing.data_utils import NormalizeTransform
 
+def matchLoss(name:str, **kwargs):
+    if name == "energy":
+        return EnergyLoss(**kwargs)
+    elif name == "mse":
+        return nn.MSELoss()
+    elif name in ["mae", "l1"]:
+        return nn.L1Loss()
+    elif name == "weighted_mse":
+        return WeightedMSELoss(**kwargs)
+    elif name == "combi_0_75":
+        return CombiLoss(0.75)
+    else:
+        raise ValueError(f"Loss function {name} not found. Consider extending 'matchLoss' function.")
+
 class WeightedMSELoss(nn.Module):
     def __init__(self, epsilon:float=1e-1, only_target_based:bool=False):
         """

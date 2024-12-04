@@ -144,7 +144,7 @@ if __name__=="__main__":
     image_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/Inputs"
     mask_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/Labels"
     
-    dataloaders, datasets = init_data(image_dir=image_dir, mask_dir=mask_dir, args=None,)
+    dataloaders = init_data(data_settings={"subdomains_dist":(1,1), "batch_size_training": 2, "batch_size_testing": 2}, image_dir=image_dir, mask_dir=mask_dir)
 
     base_directory = "/scratch/e451412/code/results/pkixy_5000_new"
     folders = find_folders_with_unet_pth(base_directory)
@@ -165,7 +165,7 @@ if __name__=="__main__":
             continue  # Skip to the next folder
         
         unet, args = load_unet(folder)
-        plot_different_loss_functions(unet, loss_funcs, dataset=datasets['val'], savepath=image_path, num_images=2)
+        plot_different_loss_functions(unet, loss_funcs, dataset=dataloaders['val'].dataset, savepath=image_path, num_images=2)
         
         try:
             losses = {}
