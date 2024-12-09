@@ -53,12 +53,11 @@ def objective(trial):
     settings["data"]["dir"] = hyperparams["data"]
     settings["model"]["UNet"]["num_channels"] = hyperparams["num_channels"]
 
-
     try:
         track_loss_functions = {
             "mse": torch.nn.MSELoss(),
             "l1": torch.nn.L1Loss(),
-            # "energy":EnergyLoss(data_dir=data_dir, device=devices[0]),
+            # "energy":EnergyLoss(data_dir=settings["data"]["dir"], device=devices[0]),
         }
 
         settings["data"]["batch_size_training"] = trial.suggest_categorical("batch_size", [int(item) for item in hyperparams["batch_size"]])
@@ -128,7 +127,15 @@ def run():
 
     loss_func = matchLoss(settings["training"]["train_loss"], data_dir=settings["data"]["dir"], device=devices[0])
     val_loss_func = matchLoss(settings["training"]["val_loss"])
+
+    # init model, load if pretrained
     model = MultiGPU_UNet_with_comm(settings, devices=devices)
+    if settings["model"]["pretrained"]:
+        print("Loading pretrained model from ", save_path/"unet.pth")
+        model.load_weights(load_path=save_path/"unet.pth", device=devices[0])
+    else:
+        model.save_weights(save_path=save_path/"unet.pth")
+
     model, data = train_parallel_model(model, dataloaders, settings, devices, save_path, scaler=scaler, data_type=data_type,  half_precision=half_precision, loss_func=loss_func, val_loss_func=val_loss_func, track_loss_functions=track_loss_functions) 
 
     # Save and calculate losses
@@ -137,11 +144,11 @@ def run():
     print("Finished!", flush=True)
 
 if __name__ == "__main__":
-    hyperparam_search = True
+    hyperparam_search = False
     print(f"Running {'hyperparameter search' if hyperparam_search else 'single run'}", flush=True)
     
     # STUDY_DIR = "/scratch/e451412/code/results/pki_5000_loss_functions"
-    STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/opti_settings"
+    STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/test_energy_loss"
     
 
     study_dir = pathlib.Path(STUDY_DIR)
