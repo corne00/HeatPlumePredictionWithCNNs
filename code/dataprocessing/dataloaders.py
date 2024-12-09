@@ -28,7 +28,7 @@ class DatasetMultipleSubdomains(Dataset):
         self.data_augmentation = data_augmentation
         self.subdomains_dist = subdomains_dist
         self.patch_size = patch_size
-        self.half_precision : bool = True
+        self.half_precision : bool = False
         self.crop_size = crop_size
 
     def __len__(self):
