@@ -9,8 +9,9 @@ from torch.optim import lr_scheduler
 
 from models.ddu_net import MultiGPU_UNet_with_comm
 from .visualization import plot_results
+from utils.losses import EnergyLoss, CombiLoss
 
-def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_precision, verbose=False, energy_loss=False):
+def compute_validation_loss(model, loss_func, dataloader, device, data_type, half_precision, verbose=False):
     model.eval()
     total_loss = 0.0
     num_batches = 0
@@ -21,10 +22,8 @@ def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_
 
                 labels = labels.to(device)
                 predictions = model(inputs)
-                if energy_loss:
-                    loss = loss_fn(inputs, predictions)
-                else:
-                    loss = loss_fn(predictions, labels)
+                loss = loss_with_energy_option(loss_func, inputs, labels, predictions)
+                
                 total_loss += loss
                 num_batches += 1
         
@@ -35,13 +34,6 @@ def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_
 def train_parallel_model(model:MultiGPU_UNet_with_comm, dataloaders, settings, devices, save_path, scaler, data_type, half_precision, loss_func, val_loss_func, verbose=False, plot_freq:int=10, track_loss_functions=None):
     
     writer = SummaryWriter(save_path)
-    
-    
-    finetune=False
-    if finetune:
-        model.load_weights(load_path=os.path.join(save_path, "unet.pth"), device=devices[0])
-    else:
-        model.save_weights(save_path=os.path.join(save_path, "unet.pth"))
         
     optimizer = torch.optim.Adam(model.parameters(), lr=settings["training"]["lr"], weight_decay=settings["training"]["adam_weight_decay"])
     scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.5)
@@ -67,16 +59,11 @@ def train_parallel_model(model:MultiGPU_UNet_with_comm, dataloaders, settings, d
 
                 ## Forward propagation:
                 predictions = model(inputs)
-
-                energy_loss = False
-                if energy_loss: 
-                    l = loss_func(inputs, predictions)
-                else:
-                    l = loss_func(predictions, labels)
+                loss_value = loss_with_energy_option(loss_func, inputs, labels, predictions)
                 
                 ## Backward propagation
-            scaler.scale(l).backward()
-            epoch_losses += l  # Add loss to epoch losses
+            scaler.scale(loss_value).backward()
+            epoch_losses += loss_value  # Add loss to epoch losses
 
             # Weight upgrade of the encoders
             with torch.no_grad():
@@ -110,7 +97,6 @@ def train_parallel_model(model:MultiGPU_UNet_with_comm, dataloaders, settings, d
         val_loss = compute_validation_loss(model, val_loss_func, dataloaders["val"], devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
         validation_losses.append(val_loss)
         epoch_losses = epoch_losses.item()
-        # print(f'Validation Loss: {val_loss:.4f}, Train Loss: {epoch_losses:.4f}')
         epochs.set_postfix_str(f"train loss: {(epoch_losses)/len(dataloaders['train']):.2e}, val loss: {val_loss:.2e}, lr: {optimizer.param_groups[0]['lr']:.1e}")
         
         # Check for improvement and save best model
@@ -121,13 +107,9 @@ def train_parallel_model(model:MultiGPU_UNet_with_comm, dataloaders, settings, d
         writer.add_scalar("train_loss", epoch_losses/len(dataloaders["train"]), epoch)
         writer.add_scalar("val_loss", val_loss, epoch)
         writer.add_scalar("learning_rate", optimizer.param_groups[0]["lr"], epoch)
-        for name, loss_fct in track_loss_functions.items():
+        for name, loss_func in track_loss_functions.items():
             try:
-                # tmp_train_loss = compute_validation_loss(unet, loss_fct, dataloader_train, devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
-                # writer.add_scalar(f"train-{name}", tmp_train_loss, epoch)
-                # summary_losses[f"train-{name}"] = tmp_train_loss
-                energy_loss = True if name == "energy" else False
-                tmp_val_loss = compute_validation_loss(model, loss_fct, dataloaders["val"], devices[0], data_type=data_type, half_precision=half_precision, verbose=False, energy_loss=energy_loss)
+                tmp_val_loss = compute_validation_loss(model, loss_func, dataloaders["val"], devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
                 writer.add_scalar(f"val-{name}", tmp_val_loss, epoch)
                 summary_losses[f"val-{name}"] = tmp_val_loss
             except: pass
@@ -153,3 +135,9 @@ def train_parallel_model(model:MultiGPU_UNet_with_comm, dataloaders, settings, d
     model.load_weights(load_path=os.path.join(save_path, "unet.pth"), device=devices[0])
     
     return model, summary_losses
+
+def loss_with_energy_option(loss_func:torch.nn.Module, inputs, labels, predictions):
+    if isinstance(loss_func, EnergyLoss):
+        return loss_func(predictions, inputs)
+    if isinstance(loss_func, CombiLoss):
+        return loss_func(predictions, labels, inputs)

@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import numpy as np
 import yaml
 from copy import deepcopy
 import contextlib
@@ -37,6 +36,8 @@ def matchLoss(name:str, **kwargs):
         return WeightedMAELoss(epsilon=0.05)
     elif name == "energy":
         return EnergyLoss(**kwargs)
+    elif name == "mse_energy":
+        return CombiLoss(0.999, EnergyLoss(**kwargs))
     else:
         raise ValueError(f"Loss function {name} not found. Consider extending 'matchLoss' function.")
 
@@ -107,15 +108,20 @@ class CombiLoss(nn.Module):
     """
     Loss function that combines MSE and MAE loss with a certain ratio alpha
     """
-    def __init__(self, alpha: float = 1.):
+    def __init__(self, alpha: float = 1., second_loss:nn.Module = nn.L1Loss()):
         super(CombiLoss, self).__init__()
         self.mse = nn.MSELoss()
-        self.mae = nn.L1Loss()
+        self.secondary_loss_function = second_loss
         self.alpha = alpha
-        self.name = rf"CombiLoss (a={alpha})"
+        self.name = rf"CombiLoss (a={alpha}) with {self.secondary_loss_function}"
 
-    def forward(self, x, y):
-        return self.alpha * self.mse(x, y) + (1. - self.alpha) * self.mae(x, y)
+    def forward(self, predictions, labels, inputs):
+        if isinstance(self.secondary_loss_function, EnergyLoss):
+            eval_second = self.secondary_loss_function(predictions, inputs)
+        else:
+            eval_second = self.secondary_loss_function(predictions, labels)
+
+        return self.alpha * self.mse(predictions, labels) + (1. - self.alpha) * eval_second
 
 class CombiRMSE_and_MAELoss(nn.Module):
     """
@@ -142,7 +148,7 @@ class RMSELoss(nn.MSELoss):
        
 
 class EnergyLoss(torch.nn.Module):
-    def __init__(self, data_dir, device, data_type=torch.float32, half_precision=False):
+    def __init__(self, data_dir, device:str="cuda:0", data_type=torch.float32, half_precision=False, keep_dim:bool=False):
         super(EnergyLoss, self).__init__()
         self.mse_loss = torch.nn.MSELoss()
         self.norm_info = yaml.load(open(data_dir+"info.yaml"), Loader=yaml.SafeLoader)
@@ -154,49 +160,52 @@ class EnergyLoss(torch.nn.Module):
         self.kernel = torch.tensor([[-1,0,1],
                                     [0,0,0],
                                     [1,0,-1]],dtype=data_type, device=self.device).unsqueeze(0).unsqueeze(0)
+        self.keep_dim = keep_dim
+        self.norm_factor = 1e-16
 
-    def forward(self, inputs, prediction):
+    def forward(self, prediction, inputs):
         inputs_full = deepcopy(inputs[0].detach()).to(torch.float32)
         self.inputs_unnormed = self.norm.reverse(deepcopy(inputs_full), "Inputs")
         self.pressure = self.inputs_unnormed[self.norm_info["Inputs"]["Liquid Pressure [Pa]"]["index"]].to(self.device)
         self.vx = self.inputs_unnormed[self.norm_info["Inputs"]["Liquid X-Velocity [m_per_y]"]["index"]].to(self.device)
-        self.vy = self.inputs_unnormed[self.norm_info["Inputs"]["Liquid X-Velocity [m_per_y]"]["index"]].to(self.device)
+        self.vy = self.inputs_unnormed[self.norm_info["Inputs"]["Liquid Y-Velocity [m_per_y]"]["index"]].to(self.device)
         self.ids_normed = inputs[0][:,self.norm_info["Inputs"]["Material ID"]["index"]].to(self.device)
         predicted_T_unnormed = self.norm.reverse(deepcopy(prediction.detach().to(torch.float32).requires_grad_(True)), "Labels").squeeze()
         # TODO dimensions! expect 2D
-        loss = energy_loss(self.pressure, predicted_T_unnormed, self.vx, self.vy, self.ids_normed, self.mse_loss, self.kernel, data_type=self.data_type, half_precision=self.half_precision, device=self.device)
-        return loss
+        loss = energy_loss(self.pressure, predicted_T_unnormed, self.vx, self.vy, self.ids_normed, self.mse_loss, self.kernel, data_type=self.data_type, half_precision=self.half_precision, device=self.device, keep_dim=self.keep_dim)
+        return loss * self.norm_factor
 
-def energy_loss(pressure, predicted_temperature, vx, vy, ids_normed, mse_loss, kernel, data_type=torch.float32, half_precision=False, device='cuda'):
+def energy_loss(pressure, predicted_temperature, vx, vy, ids_normed, mse_loss, kernel, data_type=torch.float32, half_precision=False, device:str='cuda:0', keep_dim:bool=False):
     #  based on : Manuel Hirche, Bachelor thesis, 2023
-
     resolution = 5. #m
     # cond_dry = 0.65
     # cond_sat = 1.0
     # sl  = 1 #? saturation of liquid?
     thermal_conductivity = 1 #cond_dry + torch.sqrt(sl) * (cond_sat - cond_dry)
-
     # Calculate density, molar_density, and enthalpy
     density, molar_density = eos_water_density_IFC67(predicted_temperature, pressure)
     enthalpy = eos_water_enthalphy(predicted_temperature, pressure)
     # Calculate temperature gradients
-    T_grad = torch.gradient(predicted_temperature)
+    T_grad = torch.gradient(predicted_temperature, dim=(1,2))
     # Calculate energy components
-    energy_u = torch.gradient((molar_density * vx * enthalpy) - (thermal_conductivity * T_grad[0]/resolution))[0]/resolution
-    energy_v = torch.gradient((molar_density * vy * enthalpy) - (thermal_conductivity * T_grad[1]/resolution))[1]/resolution
+    energy_u = torch.gradient((molar_density * vx * enthalpy) - (thermal_conductivity * T_grad[0]/resolution), dim=(1,2))[0]/resolution
+    energy_v = torch.gradient((molar_density * vy * enthalpy) - (thermal_conductivity * T_grad[1]/resolution), dim=(1,2))[1]/resolution
     energy = energy_u + energy_v
 
     # Calculate inflow energy
     inflow_energy = energy_hps(ids_normed, resolution, density, kernel, data_type=data_type, half_precision=half_precision, device=device)
-    energy -= inflow_energy*0.5
+    energy -= inflow_energy #*0.5
 
     # Calculate energy loss
-    energy_loss = mse_loss(energy, torch.zeros_like(energy))
+    if not keep_dim:
+        energy_loss = mse_loss(energy, torch.zeros_like(energy))
+    else:
+        energy_loss = torch.nn.MSELoss(reduction="none")(energy, torch.zeros_like(energy))
     return energy_loss
 
-def energy_hps(ids, resolution, density, kernel, data_type=torch.float32, half_precision=False, device='cuda'):
+def energy_hps(ids, resolution, density, kernel, data_type=torch.float32, half_precision=False, device:str='cuda:0'):
 
-    with (torch.autocast(device_type='cuda', dtype=data_type) if half_precision else contextlib.nullcontext()):
+    with (torch.autocast(device_type=device, dtype=data_type) if half_precision else contextlib.nullcontext()):
         specific_heat_water = 4200 # [J/kgK]
         density_water = density # [kg/m^3]
         temp_diff = 5 # [K]
@@ -207,4 +216,4 @@ def energy_hps(ids, resolution, density, kernel, data_type=torch.float32, half_p
         
         hp_energy = torch.nn.functional.conv2d(hp_energy.unsqueeze(1), kernel, padding=1)
 
-    return (hp_energy[0,0])
+    return (hp_energy[:,0])
