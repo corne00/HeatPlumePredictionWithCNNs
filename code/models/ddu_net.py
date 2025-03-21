@@ -8,10 +8,10 @@ class MultiGPU_UNet_with_comm(nn.Module):
     # Initialize the network architecture
     # unet = model(communicator_type=None, comm_network_but_no_communication=(not exchange_fmaps), 
     #                                communication_network_def=communication_network, num_convs=num_convs)
-    def __init__(self, settings: Dict, n_classes: int = 1, input_shape: tuple = (640,640), devices: list = ["cuda:0"], bilinear: bool = False, communicator_type = None, comm_network_but_no_communication = None, communication_network_def = None):
+    def __init__(self, settings: Dict, input_shape: tuple = (640,640), devices: list = ["cuda:0"], bilinear: bool = False, 
+                 communicator_type = None, comm_network_but_no_communication = None, communication_network_def = CNNCommunicator):
         super(MultiGPU_UNet_with_comm, self).__init__()
         # init general part
-        self.n_classes = n_classes
         self.input_shape = input_shape
         self.devices = devices
 
@@ -22,6 +22,7 @@ class MultiGPU_UNet_with_comm(nn.Module):
 
         # init unet-specific part
         self.n_channels = settings["model"]["UNet"]["num_channels"]
+        self.n_classes = settings["model"]["UNet"]["num_outputs"]
         self.depth = settings["model"]["UNet"]["depth"]
         self.complexity = settings["model"]["UNet"]["complexity"]
         self.num_convs = settings["model"]["UNet"]["num_convs"]

@@ -45,9 +45,17 @@ def init_hyperparams_and_settings(path):
         load_hyperparam = "default_hyperparam_searchspace.yaml"
         load_settings = "default_settings.yaml"
         to_dump = True
-
+    
     hyperparams = yaml.safe_load(open(load_hyperparam))
     settings = yaml.safe_load(open(load_settings))
+
+    # automatically read n_inputs, n_outputs, data-dir from choice of scenario
+    assert settings["data"]["scenario"] in ["step1", "step2", "step3", "full"], f"scenario {settings['data']['scenario']} does not exist in scenarios.yaml"
+    scenarios = yaml.safe_load(open("scenarios.yaml"))
+    scenario = scenarios[settings["data"]["scenario"]]
+    settings["data"]["dir"] = scenario["dir"]
+    settings["data"]["n_inputs"] = scenario["n_inputs"]
+    settings["data"]["n_outputs"] = scenario["n_outputs"]
 
     if to_dump:
         with open(path/"hyperparam_search_options.yaml", 'w') as f:

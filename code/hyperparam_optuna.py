@@ -50,8 +50,8 @@ def objective(trial):
 
     # OPTUNAT: OVERWRITE 
     # data_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pki outputs_t/"
-    settings["data"]["dir"] = hyperparams["data"]
-    settings["model"]["UNet"]["num_channels"] = hyperparams["num_channels"]
+    settings["model"]["UNet"]["num_channels"] = settings["data"]["n_inputs"]
+    settings["model"]["UNet"]["num_outputs"] = settings["data"]["n_outputs"]
 
     try:
         track_loss_functions = {
@@ -101,6 +101,9 @@ def run():
     # Load and save the arguments from the arge parser and default settings
     settings, save_path = prepare_settings()
 
+    settings["model"]["UNet"]["num_channels"] = settings["data"]["n_inputs"]
+    settings["model"]["UNet"]["num_outputs"] = settings["data"]["n_outputs"]
+    
     # Check if we have half precision
     half_precision = torch.cuda.is_available()
     data_type = torch.float16 if half_precision else torch.float32
@@ -117,7 +120,7 @@ def run():
     track_loss_functions = {
         "mse": torch.nn.MSELoss(),
         "l1": torch.nn.L1Loss(),
-        "energy":EnergyLoss(data_dir=settings["data"]["dir"], device=devices[0]),
+        # "energy":EnergyLoss(data_dir=settings["data"]["dir"], device=devices[0]),
     }
 
     print("final settings", settings)
