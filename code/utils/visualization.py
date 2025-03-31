@@ -24,7 +24,7 @@ def plot_results(model, savepath, epoch_number, dataloaders):
             plot_subplot(start_pos + i, full_images[i].cpu(), title=title)
         
         plot_subplot(start_pos + 3, predictions[0, 0].cpu(), vmin=0, vmax=1)
-        plot_subplot(start_pos + 4, masks.cpu()[0])
+        plot_subplot(start_pos + 4, masks.cpu()[0], vmin=0, vmax=1)
         plot_subplot(start_pos + 5, masks.cpu()[0] - predictions[0, 0].cpu(), colorbar=colorbar)
 
     plt.figure(figsize=(9, 12))

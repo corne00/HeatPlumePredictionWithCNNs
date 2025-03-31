@@ -24,10 +24,10 @@ def compute_validation_loss(model, loss_func, dataloader, device, data_type, hal
                 predictions = model(inputs)
                 loss = loss_with_energy_option(loss_func, inputs, labels, predictions)
                 
-                total_loss += loss
+                total_loss += loss.item()
                 num_batches += 1
         
-    average_loss = total_loss.item() / num_batches
+    average_loss = total_loss / num_batches
     return average_loss
 
 # Train function
@@ -36,7 +36,7 @@ def train_parallel_model(model:MultiGPU_UNet_with_comm, dataloaders, settings, d
     writer = SummaryWriter(save_path)
         
     optimizer = torch.optim.Adam(model.parameters(), lr=settings["training"]["lr"], weight_decay=settings["training"]["adam_weight_decay"])
-    scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.5)
+    scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, patience=1000, factor=0.5)
 
     summary_losses = {}
 
@@ -52,7 +52,6 @@ def train_parallel_model(model:MultiGPU_UNet_with_comm, dataloaders, settings, d
         epoch_losses = 0.0  # Initialize losses for the epoch
         
         for inputs, labels in tqdm(dataloaders["train"], disable=(not verbose)):
-            optimizer.zero_grad()
             with (torch.autocast(device_type='cuda', dtype=data_type) if half_precision else contextlib.nullcontext()):
                 
                 labels = labels.to(devices[0])
@@ -61,9 +60,14 @@ def train_parallel_model(model:MultiGPU_UNet_with_comm, dataloaders, settings, d
                 predictions = model(inputs)
                 loss_value = loss_with_energy_option(loss_func, inputs, labels, predictions)
                 
-                ## Backward propagation
+            # Check for nan loss and break training if it occurs
+            if torch.isnan(loss_value):
+                print(f"NaN detected in loss at epoch {epoch}, stopping training")
+                return model, summary_losses
+            
+            ## Backward propagation
             scaler.scale(loss_value).backward()
-            epoch_losses += loss_value  # Add loss to epoch losses
+            epoch_losses += loss_value.item()  # Add loss to epoch losses
 
             # Weight upgrade of the encoders
             with torch.no_grad():
@@ -81,7 +85,8 @@ def train_parallel_model(model:MultiGPU_UNet_with_comm, dataloaders, settings, d
                         param2.grad = None
             
             # Set optimizer step
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
             optimizer.zero_grad(set_to_none=True)
             
             # Syncrhonize weights to the encoder clones
@@ -92,11 +97,10 @@ def train_parallel_model(model:MultiGPU_UNet_with_comm, dataloaders, settings, d
             for i in range(1, len(model.decoders)):
                 model.decoders[i].load_state_dict(model.decoders[0].state_dict())
     
-
         # Compute and print validation loss
         val_loss = compute_validation_loss(model, val_loss_func, dataloaders["val"], devices[0], data_type=data_type, half_precision=half_precision, verbose=False)
         validation_losses.append(val_loss)
-        epoch_losses = epoch_losses.item()
+        # epoch_losses = epoch_losses.item()
         epochs.set_postfix_str(f"train loss: {(epoch_losses)/len(dataloaders['train']):.2e}, val loss: {val_loss:.2e}, lr: {optimizer.param_groups[0]['lr']:.1e}")
         
         # Check for improvement and save best model
@@ -141,3 +145,5 @@ def loss_with_energy_option(loss_func:torch.nn.Module, inputs, labels, predictio
         return loss_func(predictions, inputs)
     if isinstance(loss_func, CombiLoss):
         return loss_func(predictions, labels, inputs)
+    else:
+        return loss_func(predictions, labels)

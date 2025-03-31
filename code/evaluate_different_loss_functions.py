@@ -32,7 +32,7 @@ def load_unet(folder):
 
     args = argparse.Namespace(**args_dict)
 
-    model = MultiGPU_UNet_with_comm(n_channels=NUM_CHANNELS, n_classes=1, input_shape=(640, 640), num_comm_fmaps=args.num_comm_fmaps, devices=DEVICES, depth=args.depth,
+    model = MultiGPU_UNet_with_comm(n_channels=NUM_CHANNELS, input_shape=(640, 640), num_comm_fmaps=args.num_comm_fmaps, devices=DEVICES, depth=args.depth,
                                     subdom_dist=args.subdomains_dist, bilinear=False, comm=args.comm, complexity=args.complexity, dropout_rate=0.0, 
                                     kernel_size=args.kernel_size, padding=args.padding, communicator_type=None, comm_network_but_no_communication=(not args.exchange_fmaps), 
                                     communication_network_def=None, num_convs=args.num_convs)
@@ -141,12 +141,12 @@ def compute_validation_loss(model, loss_fn, dataloader, device, data_type, half_
 
 if __name__=="__main__":
     # Load dataset
-    image_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/Inputs"
-    mask_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_5000dp inputs_pkixy outputs_t/Labels"
+    image_dir = "/projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/data/dataset_giant_square_100hp_varyK_1000dp inputs_pki outputs_t/Inputs"
+    mask_dir = "/projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/data/dataset_giant_square_100hp_varyK_1000dp inputs_pki outputs_t/Labels"
     
-    dataloaders = init_data(data_settings={"subdomains_dist":(1,1), "batch_size_training": 2, "batch_size_testing": 2}, image_dir=image_dir, mask_dir=mask_dir)
+    dataloaders = init_data(data_settings={"subdomains_dist":(1,1), "batch_size_training": 2, "batch_size_testing": 2}, data_dir=image_dir, labels_dir=mask_dir)
 
-    base_directory = "/scratch/e451412/code/results/pkixy_5000_new"
+    base_directory = "/projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/code/results/pkixy_5000_new"
     folders = find_folders_with_unet_pth(base_directory)
     random.shuffle(folders)
 

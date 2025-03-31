@@ -1,23 +1,53 @@
 import os
 import numpy as np
+import pathlib
 
 from .dataloaders import DatasetMultipleSubdomains
 from torch.utils.data import DataLoader
 
-def init_data(data_settings, image_dir, mask_dir, num_samples=None, crop_size = (None, None)):
+def init_data(data_settings, data_dir, num_samples_overfitting=None, crop_size = (None, None)):
+    data_dir = pathlib.Path(data_dir)
+    inputs_dir = data_dir / "Inputs"
+    labels_dir = data_dir / "Labels"
+    
+    if num_samples_overfitting is not None:
+        inputs_dir_test = inputs_dir
+        labels_dir_test = labels_dir
+    else:
+        test_dir = pathlib.Path(data_dir).parent / f"{pathlib.Path(data_dir).name} TEST"
+        inputs_dir_test = test_dir / "Inputs"
+        labels_dir_test = test_dir / "Labels"
 
-    image_labels = os.listdir(image_dir)
-    if num_samples is not None:
-        image_labels = image_labels[:num_samples]
-    split=(np.array([0.8,0.19,0.1]) * len(image_labels)).astype(int)
-    train_dataset = DatasetMultipleSubdomains(image_labels=image_labels[:split[0]], image_dir=image_dir, mask_dir=mask_dir, transform=None,
-                                        target_transform=None, data_augmentation=None, subdomains_dist=data_settings["subdomains_dist"], patch_size=640, crop_size=crop_size)
+    np.random.seed(0)
+    image_names = os.listdir(inputs_dir)
+    image_names.sort()
+    np.random.shuffle(image_names)
+    
+    if num_samples_overfitting is not None:
+        image_names_train = image_names[:num_samples_overfitting]
+        image_names_val = image_names[:num_samples_overfitting]
+        image_names_test = image_names[:num_samples_overfitting]
+    else:
+        split=(np.array([0.8,0.2,0.]) * len(image_names)).astype(int)
+        
+        image_names_train = image_names[:split[0]]
+        image_names_val = image_names[split[0]:split[0]+split[1]]
+        image_names_test = np.sort(os.listdir(inputs_dir_test))
+        print("Image labels test:", image_names_test)
 
-    val_dataset = DatasetMultipleSubdomains(image_labels=image_labels[split[0]:split[0]+split[1]], image_dir=image_dir, mask_dir=mask_dir, transform=None,
-                                        target_transform=None, data_augmentation=None, subdomains_dist=data_settings["subdomains_dist"], patch_size=640, crop_size=crop_size)
+    train_dataset = DatasetMultipleSubdomains(image_labels=image_names_train, image_dir=inputs_dir, mask_dir=labels_dir, transform=None,
+                                        target_transform=None, data_augmentation=None, subdomains_dist=data_settings["subdomains_dist"], patch_size=2560, #2560, 
+                                        crop_size=crop_size, max_images = None)
 
-    test_dataset = DatasetMultipleSubdomains(image_labels=image_labels[split[0]+split[1]:], image_dir=image_dir, mask_dir=mask_dir, transform=None,
-                                        target_transform=None, data_augmentation=None, subdomains_dist=data_settings["subdomains_dist"], patch_size=640, crop_size=crop_size)
+    val_dataset = DatasetMultipleSubdomains(image_labels=image_names_val, image_dir=inputs_dir, mask_dir=labels_dir, transform=None,
+                                        target_transform=None, data_augmentation=None, subdomains_dist=data_settings["subdomains_dist"], patch_size=2560, #2560, 
+                                        crop_size=crop_size, max_images = None)
+
+    test_dataset = DatasetMultipleSubdomains(image_labels=image_names_test, image_dir=inputs_dir_test, mask_dir=labels_dir_test, transform=None,
+                                        target_transform=None, data_augmentation=None, subdomains_dist=data_settings["subdomains_dist"], patch_size=2560, #2560, 
+                                        crop_size=crop_size, max_images = None)
+
+    print("Length of train, test and validation dataset:", len(train_dataset), len(test_dataset), len(val_dataset))
 
     # Define dataloaders
     dataloader_train = DataLoader(train_dataset, batch_size=data_settings["batch_size_training"], shuffle=True) 
@@ -25,3 +55,5 @@ def init_data(data_settings, image_dir, mask_dir, num_samples=None, crop_size = 
     dataloader_test = DataLoader(test_dataset, batch_size=data_settings["batch_size_testing"], shuffle=False)
 
     return {"train": dataloader_train, "val": dataloader_val, "test": dataloader_test}
+
+

@@ -72,7 +72,7 @@ def test_CombiLoss():
 
     # Actual result
     combi_loss = CombiLoss(alpha=0.5)
-    loss_combi = combi_loss(prediction, target)
+    loss_combi = combi_loss(predictions=prediction, labels=target, inputs=prediction)
     
     # Test 
     assert torch.isclose(loss_combi, torch.tensor(expected), atol=1e-3)

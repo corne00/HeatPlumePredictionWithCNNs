@@ -30,6 +30,9 @@ def prepare_settings():
         # default_settings["save_path"] = STUDY_DIR + "/energy_loss_finetune"
         save_path.mkdir(parents=True, exist_ok=True)
 
+    # automatically read n_inputs, n_outputs, data-dir from choice of scenario
+    get_scenario_info(settings)
+    
     if settings["model"]["padding"] is None:
         settings["model"]["padding"] = settings["model"]["kernel_size"] // 2
 
@@ -50,12 +53,7 @@ def init_hyperparams_and_settings(path):
     settings = yaml.safe_load(open(load_settings))
 
     # automatically read n_inputs, n_outputs, data-dir from choice of scenario
-    assert settings["data"]["scenario"] in ["step1", "step2", "step3", "full"], f"scenario {settings['data']['scenario']} does not exist in scenarios.yaml"
-    scenarios = yaml.safe_load(open("scenarios.yaml"))
-    scenario = scenarios[settings["data"]["scenario"]]
-    settings["data"]["dir"] = scenario["dir"]
-    settings["data"]["n_inputs"] = scenario["n_inputs"]
-    settings["data"]["n_outputs"] = scenario["n_outputs"]
+    get_scenario_info(settings)
 
     if to_dump:
         with open(path/"hyperparam_search_options.yaml", 'w') as f:
@@ -63,6 +61,14 @@ def init_hyperparams_and_settings(path):
         with open(path/"settings.yaml", 'w') as f:
             yaml.dump(settings, f)
     return hyperparams, settings
+
+def get_scenario_info(settings):
+    assert settings["data"]["scenario"] in ["step1", "step2", "step3", "full"], f"scenario {settings['data']['scenario']} does not exist in scenarios.yaml"
+    scenarios = yaml.safe_load(open("scenarios.yaml"))
+    scenario = scenarios[settings["data"]["scenario"]]
+    settings["data"]["dir"] = scenario["dir"]
+    settings["data"]["n_inputs"] = scenario["n_inputs"]
+    settings["data"]["n_outputs"] = scenario["n_outputs"]
 
 
 def save_args_to_json(args, filename="args.json"):

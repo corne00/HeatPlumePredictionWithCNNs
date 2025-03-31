@@ -8,7 +8,7 @@
 #SBATCH --cpus-per-task=2
 #SBATCH --mem-per-gpu=8GB         # Require 8GB of memory per GPU
 #SBATCH --account=research-eemcs-diam
-#SBATCH --output=/scratch/e451412/slurm_outputs/slurm-eval-%j.out
+#SBATCH --output=/projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/slurm_outputs/slurm-eval-%j.out
 
 # Load modules
 module load 2024r1 openmpi py-torch 
@@ -20,5 +20,5 @@ python -m pip install --user tensorboard
 python -m pip install --user typing-extensions --upgrade
 
 # Execute the command
-cd /scratch/e451412/code
+cd /projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/code
 srun python ./evaluate_different_loss_functions.py

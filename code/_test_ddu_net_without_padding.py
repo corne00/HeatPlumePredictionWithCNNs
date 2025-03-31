@@ -76,8 +76,8 @@ print("Output shape of DDUNet:", output_shape)  # Print (464, 464) for this exam
 
 # # Set up datasets and dataloaders. Note that we use the crop size as argument to the init data
 # args = parse_args()
-# image_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_1000dp inputs_pki outputs_t/Inputs"
-# mask_dir = "/scratch/e451412/data/dataset_large_square_6hp_varyK_1000dp inputs_pki outputs_t/Labels"
+# image_dir = "/projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/data/dataset_large_square_6hp_varyK_1000dp inputs_pki outputs_t/Inputs"
+# mask_dir = "/projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/data/dataset_large_square_6hp_varyK_1000dp inputs_pki outputs_t/Labels"
 # args.batch_size_training = 4
 
 # dataloaders, datasets = init_data(args=args, image_dir=image_dir, mask_dir=mask_dir, crop_size=output_shape)

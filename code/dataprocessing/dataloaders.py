@@ -6,7 +6,8 @@ from torch.utils.data import Dataset
 
 class DatasetMultipleSubdomains(Dataset):
     def __init__(self, image_labels, image_dir, mask_dir, transform=None, target_transform=None, 
-                 data_augmentation=None, patch_size = 640, subdomains_dist=(1,1), crop_size=(None, None)):
+                 data_augmentation=None, patch_size = 640, subdomains_dist=(1,1), crop_size=(None, None),
+                 max_images:int = None):
         """
         Args:
         - image_labels (list): list of file names of the labels (ground truth and inputs) that should be included in the dataset
@@ -17,10 +18,10 @@ class DatasetMultipleSubdomains(Dataset):
         - data_augmentation  : data augmentation that should be applied to the input and output labels
         - patch_size         : pathc size to be used for training: if smaller than image size, patches with this size will be generated!
         - subdomain dist (int, int): splitting (nx, ny) of the input into subdomains, nx in x-direction and ny in y-direction
-
+        - max_images (int)   : maximum number of images to load (for overfitting tests, etc.)
         """
 
-        self.img_labels = image_labels
+        self.img_labels = image_labels[:max_images] if max_images is not None else image_labels
         self.img_dir = image_dir
         self.mask_dir = mask_dir
         self.transform = transform
@@ -30,6 +31,7 @@ class DatasetMultipleSubdomains(Dataset):
         self.patch_size = patch_size
         self.half_precision : bool = False
         self.crop_size = crop_size
+        self.max_images = max_images
 
     def __len__(self):
         return len(self.img_labels)

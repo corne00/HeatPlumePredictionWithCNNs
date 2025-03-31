@@ -102,6 +102,7 @@ class ThresholdedMAELoss(nn.Module):
         weight = torch.where(target > self.threshold, 1., self.weight_ratio)
                 
         # Return the weighted mean absolute error
+        # print(prediction.shape, target.shape)
         return torch.mean(weight * self.mae(prediction, target))
     
 class CombiLoss(nn.Module):

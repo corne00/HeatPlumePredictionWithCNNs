@@ -17,7 +17,7 @@ class MultiGPU_UNet_with_comm(nn.Module):
 
         # init model
         self.kernel_size = settings["model"]["kernel_size"]
-        self.padding = settings["model"]["padding"]
+        self.padding = self.padding = settings["model"]["padding"] if settings["model"]["padding"] is not None else self.kernel_size // 2
         self.dropout_rate = settings["model"]["dropout_rate"]
 
         # init unet-specific part
@@ -48,7 +48,8 @@ class MultiGPU_UNet_with_comm(nn.Module):
         self.init_decoders()
         
         if self.comm:
-            self.communication_network = self.communication_network_def(in_channels=self.num_comm_fmaps, out_channels=self.num_comm_fmaps, dropout_rate=self.dropout_rate, kernel_size=self.kernel_size, padding=self.padding).to(devices[0])
+            self.communication_network = self.communication_network_def(in_channels=self.num_comm_fmaps, out_channels=self.num_comm_fmaps, 
+                                                                        dropout_rate=self.dropout_rate, kernel_size=self.kernel_size, padding=self.padding).to(devices[0])
 
     def init_encoders(self):
         encoder = Encoder(n_channels=self.n_channels, depth=self.depth, complexity=self.complexity,

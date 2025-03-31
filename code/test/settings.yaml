@@ -1,0 +1,32 @@
+data:
+  batch_size_testing: 2
+  batch_size_training: 2
+  dir: /projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/data/dataset_giant_square_100hp_varyK_1000dp
+    inputs_pki outputs_t/
+  n_inputs: 3
+  n_outputs: 1
+  scenario: full
+  subdomains_dist:
+  - 1
+  - 1
+model:
+  UNet:
+    complexity: 8
+    depth: 6
+    num_channels: 3
+    num_convs: 3
+    num_outputs: 1
+  comm:
+    comm: false
+    exchange_fmaps: false
+    num_comm_fmaps: 0
+  dropout_rate: 0.0
+  kernel_size: 3
+  padding: 1
+training:
+  adam_weight_decay: 0.1
+  lr: 0.00018
+  num_epochs: 100
+  num_samples_overfitting: null
+  train_loss: combi_0_75
+  val_loss: combi_0_75

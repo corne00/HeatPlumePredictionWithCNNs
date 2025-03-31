@@ -6,7 +6,7 @@ import os
 import hyperparam_optuna as hyp
 
 def test_setup():
-    STUDY_DIR = "/scratch/sgs/pelzerja/DDUNet/code/results/unittesting"
+    STUDY_DIR = "/projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/code/results/unittesting"
     study_dir = pathlib.Path(STUDY_DIR)
     study_dir.mkdir(parents=True, exist_ok=True)
 

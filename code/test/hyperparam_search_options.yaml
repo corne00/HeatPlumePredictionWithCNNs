@@ -1,0 +1,43 @@
+batch_size:
+- 2
+- 4
+- 8
+- 16
+complexity:
+- 8
+- 16
+- 32
+- 64
+depth:
+- 4
+- 5
+- 6
+- 7
+kernel_size:
+- 3
+- 5
+- 7
+loss_functions:
+- mse
+- combi_0_75
+- combi_0_5
+- combi_0_25
+- l1
+- thresholded_mae_0_02
+- thresholded_mae_0_04
+- thresholded_mae_0_01
+- weighted_mae_epsilon_0_1
+lr:
+  log: true
+  max: 1e-3
+  min: 1e-5
+num_convs:
+- 1
+- 2
+- 3
+weight_decay:
+- 0
+- 1e-4
+- 1e-3
+- 1e-2
+- 1e-1

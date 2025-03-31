@@ -14,3 +14,11 @@ to train with physics loss, 2 adaptations are required:
         l = loss_func(predictions, labels)
                 
     ```
+
+
+# Setup on delftblue
+- clone git repo
+- module load 2024r1
+- module load python/3.10.12
+- module load py-pip
+- pip install -r requirements.txt

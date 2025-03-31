@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import pathlib
 import json
 
-results_dir = pathlib.Path("/scratch/e451412/code/results/pkixy_5000_new")
+results_dir = pathlib.Path("/projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/code/results/pkixy_5000_new")
 losses = {"MAELoss":[],
     "MSELoss":[],
     "CombiLoss (a=0.25)":[],

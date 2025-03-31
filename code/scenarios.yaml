@@ -3,7 +3,7 @@ step1:
   n_outputs: 2
   dir: /projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/data/dataset_giant_square_100hp_varyK_1000dp inputs_pki outputs_xy/
 step2:
-  n_inputs: 2
+  n_inputs: 3
   n_outputs: 2
   dir: /projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/data/dataset_giant_square_100hp_varyK_1000dp inputs_xy outputs_s+s_outer/
 step3:
