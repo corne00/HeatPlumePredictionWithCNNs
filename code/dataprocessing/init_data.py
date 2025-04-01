@@ -5,7 +5,8 @@ import pathlib
 from .dataloaders import DatasetMultipleSubdomains
 from torch.utils.data import DataLoader
 
-def init_data(data_settings, data_dir, num_samples_overfitting=None, crop_size = (None, None)):
+def init_data(data_settings, data_dir, num_samples_overfitting=None, 
+              crop_size = (None, None), max_dataset_size=None):
     data_dir = pathlib.Path(data_dir)
     inputs_dir = data_dir / "Inputs"
     labels_dir = data_dir / "Labels"
@@ -17,6 +18,7 @@ def init_data(data_settings, data_dir, num_samples_overfitting=None, crop_size =
         test_dir = pathlib.Path(data_dir).parent / f"{pathlib.Path(data_dir).name} TEST"
         inputs_dir_test = test_dir / "Inputs"
         labels_dir_test = test_dir / "Labels"
+
 
     np.random.seed(0)
     image_names = os.listdir(inputs_dir)
@@ -34,6 +36,9 @@ def init_data(data_settings, data_dir, num_samples_overfitting=None, crop_size =
         image_names_val = image_names[split[0]:split[0]+split[1]]
         image_names_test = np.sort(os.listdir(inputs_dir_test))
         print("Image labels test:", image_names_test)
+
+    if max_dataset_size is not None:
+        image_names_train = image_names_train[:max_dataset_size]
 
     train_dataset = DatasetMultipleSubdomains(image_labels=image_names_train, image_dir=inputs_dir, mask_dir=labels_dir, transform=None,
                                         target_transform=None, data_augmentation=None, subdomains_dist=data_settings["subdomains_dist"], patch_size=2560, #2560, 

@@ -64,19 +64,20 @@ def objective(trial):
 
     settings["data"]["batch_size_training"] = trial.suggest_categorical("batch_size", [int(item) for item in hyperparams["batch_size"]])
     print(settings["training"]["num_samples_overfitting"])
+    max_dataset_size = (None if settings["training"]["max_dataset_size"] is None else int(settings["training"]["max_dataset_size"]))
     num_samples_overfitting = (None if settings["training"]["num_samples_overfitting"] is None else int(settings["training"]["num_samples_overfitting"]))
-    dataloaders = init_data(settings["data"], data_dir=settings["data"]["dir"], num_samples_overfitting=num_samples_overfitting)
+    dataloaders = init_data(settings["data"], data_dir=settings["data"]["dir"], num_samples_overfitting=num_samples_overfitting, max_dataset_size=max_dataset_size)
 
     # Generate trial suggestions
     settings["model"]["kernel_size"] = trial.suggest_categorical("kernel_size", [int(item) for item in hyperparams["kernel_size"]])
     settings["model"]["UNet"]["depth"] = trial.suggest_categorical("depth", [int(item) for item in hyperparams["depth"]])
     settings["model"]["UNet"]["complexity"] = trial.suggest_categorical("complexity", [int(item) for item in hyperparams["complexity"]])
     settings["model"]["UNet"]["num_convs"] = trial.suggest_categorical("num_convs", [int(item) for item in hyperparams["num_convs"]])
-
+    settings["model"]["comm"]["comm"] = trial.suggest_categorical("comm", list(set(bool(x) for x in hyperparams["comm"])))
     settings["training"]["lr"] = trial.suggest_float("lr", float(hyperparams["lr"]["min"]),  float(hyperparams["lr"]["max"]), log=hyperparams["lr"]["log"]) #suggest_categorical("lr", [1e-3, 2e-4, 1e-4, 5e-5, 1e-5])
     settings["training"]["adam_weight_decay"] = trial.suggest_categorical("weight_decay", [float(item) for item in hyperparams["weight_decay"]])
-
     settings["training"]["train_loss"] = trial.suggest_categorical("loss function", hyperparams["loss_functions"])
+    
     
     print("trial settings", settings)
 
@@ -89,6 +90,7 @@ def objective(trial):
     model = MultiGPU_UNet_with_comm(settings, devices=devices)
     model, data = train_parallel_model(model, dataloaders, settings, devices, save_path, scaler=scaler, data_type=data_type,  half_precision=half_precision, loss_func=loss_func, val_loss_func=val_loss_func, track_loss_functions=track_loss_functions) 
     
+
     loss = np.min(data["val_losses"])
     # Save and calculate losses
     evaluate(model, data, dataloaders, save_path)

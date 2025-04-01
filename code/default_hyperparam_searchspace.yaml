@@ -9,3 +9,4 @@ lr              :
   log             : True
 weight_decay    : [0, 1e-4, 1e-3, 1e-2, 1e-1]
 loss_functions  : ["mse", "combi_0_75", "combi_0_5", "combi_0_25", "l1", "thresholded_mae_0_02",     "thresholded_mae_0_04", "thresholded_mae_0_01", "weighted_mae_epsilon_0_1"] # "combi_RMSE_MAE", "weighted_mae_epsilon_0_2", "weighted_mae_epsilon_0_05", "energy", 
+comm            : true

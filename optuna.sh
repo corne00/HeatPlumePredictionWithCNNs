@@ -18,4 +18,4 @@ module load py-pip
 
 # Execute the command
 cd /projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/code
-srun python ./hyperparam_optuna.py --study_dir "/projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/code/results/scenario_full_full_images"
+srun python ./hyperparam_optuna.py --study_dir "/projects/ddu_net_heat_plume_prediction/HeatPlumePredictionWithCNNs/code/results/tests_week_14/scenario_3/with_vs_without_communication_network"
