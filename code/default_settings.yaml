@@ -25,3 +25,4 @@ training:
   adam_weight_decay: 0.1
   lr: 0.00018
   num_samples_overfitting: null
+  max_dataset_size: null
