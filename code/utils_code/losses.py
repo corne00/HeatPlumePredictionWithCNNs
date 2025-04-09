@@ -3,6 +3,7 @@ import torch.nn as nn
 import yaml
 from copy import deepcopy
 import contextlib
+from skimage.metrics import structural_similarity as ssim
 
 from dataprocessing.equations_of_state import eos_water_density_IFC67, eos_water_enthalphy
 from dataprocessing.data_utils import NormalizeTransform
@@ -218,3 +219,50 @@ def energy_hps(ids, resolution, density, kernel, data_type=torch.float32, half_p
         hp_energy = torch.nn.functional.conv2d(hp_energy.unsqueeze(1), kernel, padding=1)
 
     return (hp_energy[:,0])
+
+
+class SSIMLoss(nn.Module):
+    def __init__(self):
+        super(SSIMLoss, self).__init__()
+        self.min = 0
+        self.max = 1
+
+    def forward(self, predictions, labels):
+        # assert predictions.max() <= self.max, f"Prediction values exceed max value with {predictions.max()}"
+        # assert predictions.min() >= self.min, f"Prediction values are below min value with {predictions.min()}"
+        # assert labels.max() <= self.max, f"Label values exceed max value with {labels.max()}"
+        # assert labels.min() >= self.min, f"Label values are below min value with {labels.min()}"
+        
+        ssim_total = 0
+        for dp in range(predictions.shape[0]):
+            ssim_val = ssim(predictions[dp].detach().cpu().numpy(), labels[dp].detach().cpu().numpy(), data_range=self.max - self.min)
+            ssim_total += ssim_val
+        return ssim_total / predictions.shape[0] # average over batch size
+    
+
+class LinfLoss(nn.Module):
+    # author: JPelzer, origin: LGCNN repo
+    def __init__(self):
+        super(LinfLoss, self).__init__()
+
+    def forward(self, output, target):
+        return torch.max(torch.abs(output - target))
+
+class IoULoss(nn.Module):
+    # author: JPelzer, origin: LGCNN repo
+    # best value is 1.0, worst is 0.0
+    def __init__(self):
+        super(IoULoss, self).__init__()
+        # on binary mask of 0.9 threshold (values between 0 and 1)
+        # TODO currently normalized data -> go to real data?
+        self.threshold = 0.9 # TODO find reasonable threshold
+        self.epsilon = 1e-6 # to avoid division by zero
+
+    def forward(self, output, label):
+    # author: JPelzer, origin: LGCNN repo
+        output = output > self.threshold
+        label = label > self.threshold
+        intersection = (output & label).float().sum((1, 2))
+        union = (output | label).float().sum((1, 2))
+        iou = (intersection + self.epsilon) / (union + self.epsilon)
+        return iou.mean() # averaged over batch and channels

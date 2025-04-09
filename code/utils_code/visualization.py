@@ -4,12 +4,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 def plot_results(model, savepath, epoch_number, dataloaders):
-    def plot_subplot(position, image, title='', vmin=None, vmax=None, colorbar=False):
-        plt.subplot(4, 3, position)
+
+    def plot_subplot(no_output_channels, position, image, title='', vmin=None, vmax=None, colorbar=False):
+        plt.subplot(2 + 2 * no_output_channels, 3, position)
         plt.axis("off")
         plt.imshow(image, cmap="RdBu_r", vmin=vmin, vmax=vmax)
         if colorbar:
             plt.colorbar(shrink=0.5)
+            # aligned_colorbar(plt.gca(), shrink=0.5)
         if title:
             plt.title(title)
 
@@ -20,23 +22,27 @@ def plot_results(model, savepath, epoch_number, dataloaders):
             full_images = model.concatenate_tensors([img.unsqueeze(0) for img in images]).squeeze().cpu()
 
         for i in range(3):
-            title = (title if i ==2 else '')
-            plot_subplot(start_pos + i, full_images[i].cpu(), title=title)
-        
-        plot_subplot(start_pos + 3, predictions[0, 0].cpu(), vmin=0, vmax=1)
-        plot_subplot(start_pos + 4, masks.cpu()[0], vmin=0, vmax=1)
-        plot_subplot(start_pos + 5, masks.cpu()[0] - predictions[0, 0].cpu(), colorbar=colorbar)
+            # title = (title if i ==2 else '')
+            plot_subplot(no_output_channels, start_pos + i, full_images[i].cpu(), title="input")
 
-    plt.figure(figsize=(9, 12))
-    
+        
+        for i in range(no_output_channels):
+            plot_subplot(no_output_channels, start_pos + 3 + i * 3, predictions[0, i].cpu(), vmin=0, vmax=1, title='prediction')
+            plot_subplot(no_output_channels, start_pos + 4 + i * 3, masks.cpu()[i], vmin=0, vmax=1, title='label')
+            plot_subplot(no_output_channels, start_pos + 5 + i * 3, masks.cpu()[i] - predictions[0, i].cpu(), colorbar=colorbar, title='error')
+
+    train_image, train_mask = dataloaders["train"].dataset[0]
+    no_output_channels = len(train_mask)
+
+    plt.figure(figsize=(9, 3 * (2 + 2 * no_output_channels)))
+
     # Adjust spacing between plots
     plt.subplots_adjust(hspace=0.1, wspace=0.1)
 
-    train_image, train_mask = dataloaders["train"].dataset[0]
     process_and_plot(train_image, train_mask, 1, title='training', colorbar=True)
 
     val_image, val_mask = dataloaders["val"].dataset[0]
-    process_and_plot(val_image, val_mask, 7, title='validation', colorbar=True)
+    process_and_plot(val_image, val_mask, 4 + 3 * no_output_channels, title='validation', colorbar=True) # TODO
 
     os.makedirs(savepath / "figures", exist_ok=True)
     plt.savefig(savepath / "figures" / f"epoch_{epoch_number}.png", bbox_inches='tight')

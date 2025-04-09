@@ -9,7 +9,7 @@ from torch.optim import lr_scheduler
 
 from models.ddu_net import MultiGPU_UNet_with_comm
 from .visualization import plot_results
-from utils.losses import EnergyLoss, CombiLoss
+from utils_code.losses import EnergyLoss, CombiLoss
 
 def compute_validation_loss(model, loss_func, dataloader, device, data_type, half_precision, verbose=False):
     model.eval()

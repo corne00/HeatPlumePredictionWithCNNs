@@ -12,12 +12,12 @@ import optuna
 from typing import Dict
 
 from models import *
-from utils.prepare_settings import prepare_settings, init_hyperparams_and_settings
-from utils.visualization import plot_results
+from utils_code.prepare_settings import prepare_settings, init_hyperparams_and_settings
+from utils_code.visualization import plot_results
 from dataprocessing import init_data
-from utils.train_utils import *
-from utils.visualization import *
-from utils.losses import ThresholdedMAELoss, WeightedMAELoss, CombiRMSE_and_MAELoss, CombiLoss, EnergyLoss, matchLoss
+from utils_code.train_utils import *
+from utils_code.visualization import *
+from utils_code.losses import ThresholdedMAELoss, WeightedMAELoss, CombiRMSE_and_MAELoss, CombiLoss, EnergyLoss, matchLoss
 from dataprocessing.dataloaders import DatasetMultipleSubdomains
 import argparse
 

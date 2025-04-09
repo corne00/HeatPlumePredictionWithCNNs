@@ -2,7 +2,7 @@ import torch
 from models.ddu_net_no_padding import MultiGPU_UNet_padding
 from models.sub_modules import CNNCommunicator
 from hyperparam_optuna import init_data
-from utils import parse_args
+from utils_code import parse_args
 
 devices = ['cpu'] if not torch.cuda.is_available() else ['cuda:0']
 
