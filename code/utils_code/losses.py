@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import yaml
+import pathlib
 from copy import deepcopy
 import contextlib
 from skimage.metrics import structural_similarity as ssim
@@ -266,3 +267,70 @@ class IoULoss(nn.Module):
         union = (output | label).float().sum((1, 2))
         iou = (intersection + self.epsilon) / (union + self.epsilon)
         return iou.mean() # averaged over batch and channels
+    
+
+def normalize_tensor(data, old_min, old_max, new_min, new_max):
+    """
+    Normalize a tensor to a specified range.
+    """
+    data = (data - old_min) / (old_max - old_min)
+    data = data * (new_max - new_min) + new_min
+    return data
+
+def eval_metrics(model, dataloaders:dict, metrics:dict, settings:dict, desti_dir:str):
+    """
+    Evaluate the model on the validation set using the specified metrics.
+    """
+    metrics_values = {}
+    model.eval()
+    with torch.no_grad():
+        for case, dataloader in dataloaders.items():
+            print("case: ", case)
+
+            # get predictions, combine to one tensor
+            labels_list, predictions_list = [], []
+            for batched_inputs, batched_labels in dataloader:
+                predictions = model(batched_inputs)
+                labels_list.append(batched_labels)
+                predictions_list.append(predictions)
+            labels_list = torch.cat(labels_list, dim=0)
+            predictions_list = torch.cat(predictions_list, dim=0)
+            print("predictions_list shape: ", predictions_list.shape)
+            print("labels_list shape: ", labels_list.shape)
+
+            unnormed_name = "normed"
+            print("scenario", unnormed_name)
+            for output_channel in range(predictions_list.shape[1]):
+                predictions = predictions_list[:, output_channel]
+                labels = labels_list[:, output_channel]
+                compute_metric_values(metrics, metrics_values, case, predictions, unnormed_name, output_channel, labels)
+
+            unnormed_name = "unnormed"
+            print("scenario", unnormed_name)
+            info = yaml.safe_load(open(pathlib.Path(settings["data"]["dir"]) / "info.yaml", "r"))["Labels"]
+            for name_channel, info_channel in info.items():
+                id = info_channel["index"]
+                min_c = info_channel["min"]
+                max_c = info_channel["max"]
+                predictions = normalize_tensor(predictions_list[:, id], 0, 1, min_c, max_c)
+                labels = normalize_tensor(labels_list[:, id], 0, 1, min_c, max_c)
+
+                compute_metric_values(metrics, metrics_values, case, predictions, unnormed_name, id, labels)
+
+        # Save the metrics values to a file
+        desti = pathlib.Path(desti_dir) / "eval_metrics"
+        desti.mkdir(parents=True, exist_ok=True)
+        with open(desti / "metrics_values.yaml", 'w') as file:
+            yaml.dump(metrics_values, file, default_flow_style=False)
+        print("Metrics values saved to:", desti / "metrics_values.yaml")
+
+    print("Metrics values:", metrics_values)
+    return metrics_values
+
+def compute_metric_values(metrics, metrics_values, case, predictions, unnormed_name, output_channel, labels):
+    for metric_name, metric in metrics.items():
+        name = f"{case} {unnormed_name} channel-{output_channel} {metric_name}"
+        try:
+            metrics_values[name] = metric(predictions, labels).detach().item()
+        except:
+            metrics_values[name] = float(metric(predictions, labels))

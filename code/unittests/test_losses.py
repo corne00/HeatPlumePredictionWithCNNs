@@ -1,6 +1,6 @@
 import torch
 
-from utils.losses import WeightedMAELoss, ThresholdedMAELoss, CombiRMSE_and_MAELoss, CombiLoss, WeightedMSELoss
+from utils_code.losses import WeightedMAELoss, ThresholdedMAELoss, CombiRMSE_and_MAELoss, CombiLoss, WeightedMSELoss
 
 def test_CombiRMSE_andMAELoss():
     # Fixture ("inputs")
